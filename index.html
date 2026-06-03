@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SICI | Control de Inventario</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegacion principal">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <img src="assets/mesa_tic_logo.jpg" alt="" />
+          </div>
+          <div>
+            <strong>SICI</strong>
+            <span>Inventario TIC</span>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="dashboard">
+            <span class="icon">▦</span>
+            <span>Panel</span>
+          </button>
+          <button class="nav-item" data-view="inventory">
+            <span class="icon">▤</span>
+            <span>Inventario</span>
+          </button>
+          <button class="nav-item" data-view="scan">
+            <span class="icon">⌕</span>
+            <span>Escaneo</span>
+          </button>
+          <button class="nav-item" data-view="equipment">
+            <span class="icon">⌘</span>
+            <span>Alta de equipo</span>
+          </button>
+          <button class="nav-item" data-view="users">
+            <span class="icon">◉</span>
+            <span>Usuarios</span>
+          </button>
+          <button class="nav-item" data-view="fronts">
+            <span class="icon">⌂</span>
+            <span>F.F.O.O. y Mesas</span>
+          </button>
+          <button class="nav-item" data-view="reports">
+            <span class="icon">↧</span>
+            <span>Reportes</span>
+          </button>
+        </nav>
+
+        <div class="role-panel">
+          <img class="role-emblem" src="assets/rodelagt_thumb.png" alt="" />
+          <label for="roleSelect">Vista por rol</label>
+          <select id="roleSelect">
+            <option value="admin">Administrador</option>
+            <option value="tic">Mesa TIC</option>
+            <option value="transport">Mesa de Transportes</option>
+            <option value="front">Frente de obra</option>
+          </select>
+          <p id="roleHint">Acceso completo a inventario, usuarios y frentes.</p>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">Sistema de control</span>
+            <h1 id="pageTitle">Panel general</h1>
+          </div>
+          <div class="top-actions">
+            <div class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="globalSearch" type="search" placeholder="Buscar equipo, serie o usuario" />
+            </div>
+            <button class="icon-btn" title="Notificaciones" aria-label="Notificaciones">◌</button>
+            <button class="ghost-btn" data-import-trigger>Importar Excel</button>
+            <button class="primary-btn" data-view-target="equipment">+ Nuevo equipo</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard" aria-labelledby="pageTitle">
+          <div class="metrics-grid">
+            <article class="metric">
+              <span>Total equipos</span>
+              <strong id="metricTotal">148</strong>
+              <small>12 registrados este mes</small>
+            </article>
+            <article class="metric">
+              <span>Asignados</span>
+              <strong>116</strong>
+              <small>78% del inventario activo</small>
+            </article>
+            <article class="metric">
+              <span>Mantenimiento</span>
+              <strong>9</strong>
+              <small>3 vencen esta semana</small>
+            </article>
+            <article class="metric">
+              <span>Disponibles</span>
+              <strong>23</strong>
+              <small>Listos para reasignar</small>
+            </article>
+            <article class="metric">
+              <span>Dados de baja</span>
+              <strong>7</strong>
+              <small>Retirados del servicio activo</small>
+            </article>
+          </div>
+
+          <div class="split-layout">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Actividad</span>
+                  <h2>Movimientos recientes</h2>
+                </div>
+                <button class="ghost-btn">Ver historial</button>
+              </div>
+              <div class="timeline">
+                <div class="timeline-item">
+                  <span class="dot ok"></span>
+                  <div>
+                    <strong>Laptop Dell Latitude 5440 asignada</strong>
+                    <p>Entregada a Laura Mendez en Tren Mex-Qro F1.</p>
+                  </div>
+                  <time>09:30</time>
+                </div>
+                <div class="timeline-item">
+                  <span class="dot warn"></span>
+                  <div>
+                    <strong>Impresora HP LaserJet en revision</strong>
+                    <p>Reporte de atasco recurrente por Mesa TIC.</p>
+                  </div>
+                  <time>Ayer</time>
+                </div>
+                <div class="timeline-item">
+                  <span class="dot"></span>
+                  <div>
+                    <strong>Monitor Samsung registrado</strong>
+                    <p>Alta con factura y garantia capturadas.</p>
+                  </div>
+                  <time>28 mayo</time>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Distribucion</span>
+                  <h2>Inventario por ubicacion</h2>
+                </div>
+              </div>
+              <div class="front-bars">
+                <div><span>Tren Mex-Qro F1</span><meter min="0" max="100" value="82"></meter><b>42</b></div>
+                <div><span>Tren AIFA-Pachuca F2</span><meter min="0" max="100" value="65"></meter><b>31</b></div>
+                <div><span>Terminal de Carga Palenque</span><meter min="0" max="100" value="54"></meter><b>26</b></div>
+                <div><span>Mesa TIC</span><meter min="0" max="100" value="38"></meter><b>18</b></div>
+                <div><span>Mesa de Transportes</span><meter min="0" max="100" value="28"></meter><b>12</b></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="inventory">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Control operativo</span>
+              <h2>Inventario de equipos</h2>
+            </div>
+            <div class="filters">
+              <button class="ghost-btn" data-import-trigger>Importar Excel</button>
+              <select id="frontFilter">
+                <option value="all">Todos los frentes y mesas</option>
+                <option value="Tren Mex-Qro F1">Tren Mex-Qro F1</option>
+                <option value="Tren AIFA-Pachuca F2">Tren AIFA-Pachuca F2</option>
+                <option value="Terminal de Carga Palenque">Terminal de Carga Palenque</option>
+                <option value="Mesa TIC">Mesa TIC</option>
+                <option value="Mesa de Transportes">Mesa de Transportes</option>
+              </select>
+              <select id="statusFilter">
+                <option value="all">Todos los estados</option>
+                <option value="Asignado">Asignado</option>
+                <option value="Disponible">Disponible</option>
+                <option value="Mantenimiento">Mantenimiento</option>
+                <option value="Dado de baja">Dado de baja</option>
+              </select>
+            </div>
+          </div>
+          <div class="import-panel">
+            <div>
+              <span class="eyebrow">Carga inicial</span>
+              <h2>Importar inventario desde Excel</h2>
+              <p>Permite registrar varios equipos en una sola carga. Los usuarios de frente o mesa solo podran cargar equipos en su ubicacion asignada.</p>
+            </div>
+            <div class="import-actions">
+              <button class="primary-btn" data-import-trigger>Seleccionar archivo</button>
+              <button class="ghost-btn">Descargar plantilla</button>
+              <input id="excelInput" type="file" accept=".xlsx,.xls,.csv" />
+            </div>
+            <p class="import-status" id="importStatus">Formatos permitidos: .xlsx, .xls y .csv</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Equipo</th>
+                  <th>Serie</th>
+                  <th>Asignado a</th>
+                  <th>Frente</th>
+                  <th>Estado</th>
+                  <th>Garantia</th>
+                  <th>QR</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="inventoryRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="scan">
+          <div class="scan-layout">
+            <section class="panel scanner-panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Lectura QR</span>
+                  <h2>Escaneo de articulos</h2>
+                </div>
+              </div>
+              <div class="scanner-frame">
+                <video id="scannerVideo" autoplay muted playsinline></video>
+                <div class="scanner-placeholder" id="scannerPlaceholder">
+                  <strong>Camara lista para escanear</strong>
+                  <span>Apunta al codigo QR del equipo.</span>
+                </div>
+              </div>
+              <canvas id="scannerCanvas" hidden></canvas>
+              <div class="scanner-actions">
+                <button class="primary-btn" id="openCameraBtn">Abrir camara</button>
+                <button class="ghost-btn" id="stopCameraBtn">Detener</button>
+                <label class="upload-btn">
+                  Subir imagen
+                  <input id="qrImageInput" type="file" accept="image/*" />
+                </label>
+              </div>
+            </section>
+
+            <aside class="panel scan-result">
+              <span class="eyebrow">Resultado</span>
+              <h2 id="scanStatus">Sin lectura</h2>
+              <p id="scanMessage">Escanea un QR o sube una imagen para buscar el articulo en inventario.</p>
+              <div id="scanItem"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="equipment">
+          <div class="form-layout">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Registro</span>
+                  <h2>Caracteristicas del equipo</h2>
+                </div>
+              </div>
+              <form class="equipment-form">
+                <label>Tipo de equipo<input type="text" value="Computadora portatil" /></label>
+                <label>Marca<input type="text" value="Dell" /></label>
+                <label>Modelo<input type="text" value="Latitude 5440" /></label>
+                <label>Numero de serie<input type="text" value="DL-5440-8291" /></label>
+                <label>Procesador<input type="text" value="Intel Core i7" /></label>
+                <label>Memoria RAM<input type="text" value="16 GB" /></label>
+                <label>Almacenamiento<input type="text" value="512 GB SSD" /></label>
+                <label>Sistema operativo<input type="text" value="Windows 11 Pro" /></label>
+                <label>Fecha de compra<input type="date" value="2026-05-12" /></label>
+                <label>Garantia hasta<input type="date" value="2029-05-12" /></label>
+                <label class="wide">Observaciones<textarea>Equipo con cargador, mochila y mouse inalambrico.</textarea></label>
+              </form>
+            </section>
+
+            <aside class="panel assignment-panel">
+              <span class="eyebrow">Asignacion</span>
+              <h2>Responsable y ubicacion</h2>
+              <label>Usuario responsable<select id="assignmentUser"><option>Laura Mendez</option><option>Carlos Ruiz</option><option>Gabriela Torres</option><option>Sin asignar</option></select></label>
+              <label>Frente o mesa<select id="assignmentFront"><option>Tren Mex-Qro F1</option><option>Tren AIFA-Pachuca F2</option><option>Terminal de Carga Palenque</option><option>Mesa TIC</option><option>Mesa de Transportes</option></select></label>
+              <label>Estado<select id="assignmentStatus"><option>Asignado</option><option>Disponible</option><option>Mantenimiento</option><option>Dado de baja</option></select></label>
+              <button class="primary-btn full">Guardar registro</button>
+              <button class="ghost-btn full">Adjuntar factura</button>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="users">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Permisos</span>
+              <h2>Usuarios y roles</h2>
+            </div>
+            <button class="primary-btn">+ Nuevo usuario</button>
+          </div>
+          <div class="user-grid">
+            <article class="user-card admin-only">
+              <div class="avatar">AM</div>
+              <strong>Ana Martinez</strong>
+              <span>Administrador</span>
+              <p>Acceso total a equipos, usuarios, frentes, reportes y configuracion.</p>
+            </article>
+            <article class="user-card">
+              <div class="avatar">MR</div>
+              <strong>Miguel Ramos</strong>
+              <span>Mesa TIC</span>
+              <p>Puede ver todo el inventario, registrar equipos y actualizar estados.</p>
+            </article>
+            <article class="user-card">
+              <div class="avatar">GT</div>
+              <strong>Gabriela Torres</strong>
+              <span>Mesa de Transportes</span>
+              <p>Visualiza y da seguimiento a los equipos asignados a su mesa de trabajo.</p>
+            </article>
+            <article class="user-card">
+              <div class="avatar">LM</div>
+              <strong>Laura Mendez</strong>
+              <span>Tren Mex-Qro F1</span>
+              <p>Solo visualiza los equipos asignados a su frente de obra.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="fronts">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Ubicaciones</span>
+              <h2>Frentes de Obra y Mesas de Trabajo</h2>
+            </div>
+            <button class="primary-btn admin-only">+ Nuevo frente o mesa</button>
+          </div>
+          <div class="front-grid">
+            <article><strong>Tren Mex-Qro F1</strong><span>42 equipos</span><p>I.R.O.: Myr. Juan</p></article>
+            <article><strong>Tren AIFA-Pachuca F2</strong><span>31 equipos</span><p>I.R.O.: Cor. Pedro</p></article>
+            <article><strong>Terminal de Carga Palenque</strong><span>26 equipos</span><p>I.R.O.: Cor. Luis</p></article>
+            <article><strong>Mesa TIC</strong><span>18 equipos</span><p>Jefe de Mesa: Tte. Cor. Carlos</p></article>
+            <article><strong>Mesa de Transportes</strong><span>12 equipos</span><p>Jefe de Mesa: Tte. Cor. Miguel</p></article>
+          </div>
+        </section>
+
+        <section class="view" id="reports">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Exportacion</span>
+              <h2>Reportes de inventario</h2>
+            </div>
+          </div>
+          <div class="report-grid">
+            <button>Inventario completo</button>
+            <button>Equipos por frente o mesa</button>
+            <button>Garantias por vencer</button>
+            <button>Equipos en mantenimiento</button>
+            <button>Equipos dados de baja</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <aside class="detail-drawer" id="detailDrawer" aria-hidden="true">
+      <button class="icon-btn close-drawer" id="closeDrawer" aria-label="Cerrar">×</button>
+      <span class="eyebrow">Ficha tecnica</span>
+      <h2 id="drawerTitle">Equipo</h2>
+      <div id="drawerBody"></div>
+    </aside>
+
+    <script src="app.js"></script>
+  </body>
+</html>
