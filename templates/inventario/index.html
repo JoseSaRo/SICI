@@ -1,0 +1,23 @@
+﻿{% extends "base.html" %}
+
+{% block title %}SICI | Control de Inventario{% endblock %}
+
+{% block body %}
+  <div class="app-shell">
+    {% include "inventario/parciales/menu_lateral.html" %}
+
+    <main class="workspace">
+      {% include "inventario/parciales/barra_superior.html" %}
+      {% include "inventario/modulos/panel.html" %}
+      {% include "inventario/modulos/inventario.html" %}
+      {% include "inventario/modulos/escaneo.html" %}
+      {% include "inventario/modulos/alta_equipo.html" %}
+      {% include "inventario/modulos/responsables.html" %}
+      {% include "inventario/modulos/ubicaciones.html" %}
+      {% include "inventario/modulos/reportes.html" %}
+    </main>
+  </div>
+
+  {% include "inventario/parciales/panel_detalle.html" %}
+  {% include "inventario/parciales/datos_scripts.html" %}
+{% endblock %}

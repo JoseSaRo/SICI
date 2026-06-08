@@ -1,0 +1,35 @@
+﻿<header class="topbar">
+          <div>
+            <span class="eyebrow">Sistema de control</span>
+            <h1 id="pageTitle">Panel general</h1>
+          </div>
+          <div class="top-actions">
+            <div class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="globalSearch" type="search" placeholder="Buscar equipo, serie o usuario" autocomplete="off" />
+            </div>
+            <button class="icon-btn" title="Notificaciones" aria-label="Notificaciones">○</button>
+            <button class="ghost-btn" data-import-trigger>Importar Excel</button>
+            <button class="primary-btn" data-view-target="equipment">+ Nuevo equipo</button>
+            <div class="session-menu">
+              <button class="session-user" id="sessionUserButton" type="button" aria-expanded="false" aria-controls="sessionUserMenu" title="{{ session_user.role }} - {{ session_user.scope }}">
+                <span>{{ session_user.name|slice:":1" }}</span>
+                <div>
+                  <strong>{{ session_user.name }}</strong>
+                  <small>{{ session_user.username }} · {{ session_user.role }}</small>
+                </div>
+                <b aria-hidden="true">⌄</b>
+              </button>
+              <div class="session-dropdown form-collapsed" id="sessionUserMenu">
+                <p>
+                  <strong>{{ session_user.role }}</strong>
+                  <span>{{ session_user.scope }}</span>
+                </p>
+                <form class="logout-form" id="logoutForm" method="post" action="{% url 'logout' %}">
+                  {% csrf_token %}
+                  <button class="ghost-btn" type="submit">Salir</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </header>

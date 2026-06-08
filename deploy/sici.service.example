@@ -1,0 +1,16 @@
+[Unit]
+Description=SICI Django application
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=CHANGE_ME
+Group=CHANGE_ME
+WorkingDirectory=/var/www/SICI
+EnvironmentFile=/etc/sici.env
+ExecStart=/var/www/SICI/.venv/bin/gunicorn sici.wsgi:application --bind 0.0.0.0:8001 --workers 3 --timeout 120
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

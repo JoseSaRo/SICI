@@ -1,0 +1,57 @@
+﻿{% load static %}
+<aside class="sidebar" aria-label="Navegacion principal">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <img src="{% static 'inventario/recursos/mesa_tic_logo.jpg' %}" alt="" />
+          </div>
+          <div>
+            <strong>SICI</strong>
+            <span>Inventario TIC</span>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="dashboard">
+            <span class="icon">▦</span>
+            <span>Panel</span>
+          </button>
+          <button class="nav-item" data-view="inventory">
+            <span class="icon">▤</span>
+            <span>Inventario</span>
+          </button>
+          <button class="nav-item" data-view="scan">
+            <span class="icon">⌕</span>
+            <span>Escaneo</span>
+          </button>
+          <button class="nav-item" data-view="equipment">
+            <span class="icon">+</span>
+            <span>Alta de equipo</span>
+          </button>
+          <button class="nav-item" data-view="users">
+            <span class="icon">◎</span>
+            <span>Usuarios</span>
+          </button>
+          <button class="nav-item" data-view="fronts">
+            <span class="icon">⌂</span>
+            <span>F.F.O.O. y Mesas</span>
+          </button>
+          <button class="nav-item" data-view="reports">
+            <span class="icon">↧</span>
+            <span>Reportes</span>
+          </button>
+        </nav>
+
+        {% if request.user.is_staff %}
+          <div class="role-panel">
+            <img class="role-emblem" src="{% static 'inventario/recursos/rodelagt_miniatura.png' %}" alt="" />
+            <label for="roleSelect">Vista por rol</label>
+            <select id="roleSelect" data-current-role="{{ current_role_value }}"></select>
+            <p id="roleHint">Acceso completo a inventario, usuarios y frentes.</p>
+          </div>
+        {% else %}
+          <select id="roleSelect" data-current-role="{{ current_role_value }}" hidden>
+            <option value="{{ current_role_value }}">Vista actual</option>
+          </select>
+          <p id="roleHint" hidden></p>
+        {% endif %}
+      </aside>

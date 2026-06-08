@@ -1,0 +1,49 @@
+﻿<section class="view" id="users">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Permisos</span>
+              <h2>Responsables y roles</h2>
+            </div>
+            <label class="switch-control admin-only" for="toggleResponsibleForm">
+              <input id="toggleResponsibleForm" type="checkbox" />
+              <span></span>
+              Agregar usuario
+            </label>
+          </div>
+          <div class="admin-form-grid admin-only form-collapsed" id="responsibleFormPanel">
+            <section class="panel admin-form-panel">
+              <div>
+                <span class="eyebrow">Administracion</span>
+                <h2>Agregar usuario</h2>
+              </div>
+              <form class="admin-form" id="responsibleForm" autocomplete="off">
+                <input id="responsibleId" type="hidden" />
+                <label>Nombre<input id="responsibleName" name="nombre" type="text" placeholder="Nombre del responsable" autocomplete="off" required /></label>
+                <label>Usuario<input id="responsibleUsername" name="usuario" type="text" placeholder="usuario.sici" autocomplete="off" required /></label>
+                <label>Contrasena<input id="responsiblePassword" name="password" type="password" placeholder="Contrasena inicial" autocomplete="new-password" /></label>
+                <label>Rol<select id="responsibleRole" name="rol"><option value="admin">Administrador</option><option value="mesa_tic">Responsable Mesa TIC</option><option value="frente">Responsable de frente</option><option value="mesa">Responsable de mesa</option></select></label>
+                <label>Administra<select id="responsibleLocation" name="ubicacion"><option value="">Todas las ubicaciones</option></select></label>
+                <label>Estado<select id="responsibleActive" name="activo"><option value="true">Activo</option><option value="false">Inactivo</option></select></label>
+                <button class="primary-btn full" type="submit" id="responsibleSubmit">Guardar responsable</button>
+                <button class="ghost-btn full form-collapsed" type="button" id="passwordChangeBtn">Cambiar contrasena</button>
+                <button class="ghost-btn full form-collapsed" type="button" id="cancelResponsibleEdit">Cancelar edicion</button>
+                <p class="form-status full" id="responsibleFormStatus"></p>
+              </form>
+            </section>
+
+            <section class="panel admin-form-panel">
+              <div>
+                <span class="eyebrow">Permisos</span>
+                <h2>Alcance por rol</h2>
+              </div>
+              <div class="permission-list">
+                <p><strong>Administrador</strong><span>Administra responsables, frentes, mesas, equipos, reportes y cargas Excel de todo el sistema.</span></p>
+                <p><strong>Responsable Mesa TIC</strong><span>Control total sobre los equipos informaticos de todas las ubicaciones.</span></p>
+                <p><strong>Responsable de frente o mesa</strong><span>Control total sobre sus equipos; puede capturar libremente el nombre de la persona asignada.</span></p>
+              </div>
+            </section>
+          </div>
+          <div class="user-grid" id="responsibleCards">
+            <p class="empty-state">Sin responsables registrados.</p>
+          </div>
+        </section>

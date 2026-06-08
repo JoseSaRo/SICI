@@ -1,0 +1,47 @@
+﻿<section class="view" id="fronts">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Ubicaciones</span>
+              <h2>Frentes de Obra y Mesas de Trabajo</h2>
+            </div>
+            <label class="switch-control admin-only" for="toggleLocationForm">
+              <input id="toggleLocationForm" type="checkbox" />
+              <span></span>
+              Agregar frente o mesa
+            </label>
+          </div>
+          <div class="admin-form-grid admin-only form-collapsed" id="locationFormPanel">
+            <section class="panel admin-form-panel">
+              <div>
+                <span class="eyebrow">Catalogo</span>
+                <h2 id="locationFormTitle">Agregar frente o mesa</h2>
+              </div>
+              <form class="admin-form" id="locationForm" autocomplete="off">
+                <input id="locationId" type="hidden" />
+                <label>Tipo<select id="locationType" name="tipo"><option value="frente">Frente de obra</option><option value="mesa">Mesa de trabajo</option></select></label>
+                <label>Nombre<input id="locationName" name="nombre" type="text" placeholder="Nombre del frente o mesa" autocomplete="off" required /></label>
+                <label>Responsable<input id="locationManager" name="responsable_nombre" type="text" placeholder="Nombre del responsable" autocomplete="off" required /></label>
+                <label>Cargo del responsable<input id="locationManagerRole" type="text" value="I.R.O." readonly /></label>
+                <label>Estado<select id="locationActive" name="activa"><option value="true">Activo</option><option value="false">Inactivo</option></select></label>
+                <button class="primary-btn full" type="submit" id="locationSubmit">Guardar ubicacion</button>
+                <button class="ghost-btn full form-collapsed" type="button" id="cancelLocationEdit">Cancelar edicion</button>
+                <p class="form-status full" id="locationFormStatus"></p>
+              </form>
+            </section>
+
+            <section class="panel admin-form-panel">
+              <div>
+                <span class="eyebrow">Control</span>
+                <h2>Acciones de administrador</h2>
+              </div>
+              <div class="admin-actions">
+                <button class="ghost-btn" type="button">Editar catalogo</button>
+                <button class="ghost-btn" type="button">Asignar usuarios</button>
+                <button class="ghost-btn" type="button">Activar o desactivar</button>
+              </div>
+            </section>
+          </div>
+          <div class="front-grid" id="locationCards">
+            <p class="empty-state">Sin frentes o mesas registradas.</p>
+          </div>
+        </section>

@@ -1,0 +1,1135 @@
+from io import BytesIO
+from datetime import datetime
+from urllib.parse import quote, urlencode
+
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
+from django.http import FileResponse, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404
+from django.shortcuts import redirect
+from django.shortcuts import render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+import qrcode
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from .models import Equipo, EquipoEliminado, MarcaEquipo, Movimiento, ResguardoEquipo, Responsable, SolicitudMarcaEquipo, SolicitudTipoEquipo, TipoEquipo, Ubicacion
+
+
+User = get_user_model()
+
+RAM_OPTIONS = {
+    "2 GB",
+    "4 GB",
+    "6 GB",
+    "8 GB",
+    "12 GB",
+    "16 GB",
+    "24 GB",
+    "32 GB",
+    "64 GB",
+    "128 GB",
+}
+
+STORAGE_OPTIONS = {
+    "120 GB SSD",
+    "128 GB SSD",
+    "240 GB SSD",
+    "250 GB SSD",
+    "256 GB SSD",
+    "480 GB SSD",
+    "500 GB HDD",
+    "500 GB SSD",
+    "512 GB SSD",
+    "1 TB HDD",
+    "1 TB SSD",
+    "2 TB HDD",
+    "2 TB SSD",
+    "4 TB HDD",
+}
+
+
+def format_date(value):
+    return value.strftime("%d/%m/%Y") if value else "Sin registro"
+
+
+def equipment_payload(equipo):
+    return {
+        "type": equipo.tipo,
+        "typeId": equipo.tipo_equipo_id,
+        "name": f"{equipo.marca} {equipo.modelo}".strip() or equipo.tipo,
+        "serial": equipo.numero_serie,
+        "user": equipo.asignado_a or "Sin asignar",
+        "front": equipo.ubicacion.nombre,
+        "locationId": equipo.ubicacion_id,
+        "status": equipo.get_estado_display(),
+        "warranty": format_date(equipo.garantia_hasta),
+        "cpu": equipo.procesador or "No aplica",
+        "ram": equipo.memoria_ram or "No aplica",
+        "storage": equipo.almacenamiento or "No aplica",
+        "os": equipo.sistema_operativo or "No aplica",
+        "macEthernet": equipo.mac_ethernet or "No aplica",
+        "macWifi": equipo.mac_wifi or "No aplica",
+        "invoiceUrl": equipo.factura.url if equipo.factura else "",
+        "notes": equipo.observaciones or "Sin observaciones.",
+        "history": [movement_payload(movimiento) for movimiento in equipo.movimientos.all()],
+        "safekeeping": [safekeeping_payload(resguardo) for resguardo in equipo.resguardos.filter(activo=True)],
+    }
+
+
+def movement_payload(movimiento):
+    return {
+        "type": movimiento.get_tipo_display(),
+        "description": movimiento.descripcion,
+        "status": movimiento.get_estado_equipo_display() if movimiento.estado_equipo else "Sin estado",
+        "location": movimiento.ubicacion.nombre if movimiento.ubicacion else "Sin ubicacion",
+        "assignedTo": movimiento.asignado_a or "Sin asignar",
+        "performedBy": movimiento.realizado_por_nombre or (movimiento.realizado_por.nombre if movimiento.realizado_por else "Sin registro"),
+        "date": movimiento.creado.strftime("%d/%m/%Y %H:%M"),
+    }
+
+
+def safekeeping_payload(resguardo):
+    return {
+        "id": resguardo.id,
+        "assignedTo": resguardo.asignado_a,
+        "location": resguardo.ubicacion_nombre,
+        "assignmentDate": resguardo.fecha_asignacion.strftime("%d/%m/%Y"),
+        "generatedAt": timezone.localtime(resguardo.generado).strftime("%d/%m/%Y %H:%M"),
+        "generatedBy": resguardo.generado_por_nombre or "Sin registro",
+        "signed": bool(resguardo.archivo_firmado),
+        "uploadedAt": timezone.localtime(resguardo.cargado).strftime("%d/%m/%Y %H:%M") if resguardo.cargado else "",
+        "uploadedBy": resguardo.cargado_por_nombre or "",
+        "downloadUrl": f"/resguardos/{resguardo.id}/firmado/" if resguardo.archivo_firmado else "",
+    }
+
+
+def location_payload(ubicacion):
+    equipment_count = ubicacion.equipo_set.count()
+    return {
+        "id": ubicacion.id,
+        "name": ubicacion.nombre,
+        "type": ubicacion.tipo,
+        "manager": ubicacion.responsable_nombre,
+        "managerRole": ubicacion.responsable_cargo,
+        "equipmentCount": equipment_count,
+        "active": ubicacion.activa,
+    }
+
+
+def responsible_payload(responsable):
+    return {
+        "id": responsable.id,
+        "name": responsable.nombre,
+        "username": responsable.usuario,
+        "role": responsable.rol,
+        "roleLabel": responsable.get_rol_display(),
+        "locationId": responsable.ubicacion_id,
+        "locationName": responsable.ubicacion.nombre if responsable.ubicacion else "Todas las ubicaciones",
+        "active": responsable.activo,
+    }
+
+
+def equipment_type_request_payload(solicitud):
+    return {
+        "id": solicitud.id,
+        "nombre": solicitud.nombre,
+        "solicitante": solicitud.solicitante.username if solicitud.solicitante else "Usuario eliminado",
+        "estado": solicitud.estado,
+        "estadoLabel": solicitud.get_estado_display(),
+    }
+
+
+def equipment_brand_request_payload(solicitud):
+    return {
+        "id": solicitud.id,
+        "nombre": solicitud.nombre,
+        "solicitante": solicitud.solicitante.username if solicitud.solicitante else "Usuario eliminado",
+        "estado": solicitud.estado,
+        "estadoLabel": solicitud.get_estado_display(),
+    }
+
+
+def current_role_value(request):
+    if request.user.is_staff:
+        return "admin"
+
+    responsable = Responsable.objects.filter(user=request.user, activo=True).select_related("ubicacion").first()
+    if not responsable:
+        return "admin"
+
+    if responsable.rol == Responsable.Rol.MESA_TIC:
+        return "tic"
+
+    if responsable.ubicacion_id:
+        return f"location:{responsable.ubicacion_id}"
+
+    return "admin"
+
+
+def current_responsable(request):
+    return Responsable.objects.filter(user=request.user, activo=True).select_related("ubicacion").first()
+
+
+def request_ip(request):
+    return request.META.get("REMOTE_ADDR") or None
+
+
+def movement_actor_data(request, responsable=None):
+    responsable = responsable or current_responsable(request)
+    return {
+        "realizado_por": responsable,
+        "realizado_por_usuario": request.user,
+        "realizado_por_nombre": responsable.nombre if responsable else request.user.get_full_name() or request.user.username,
+        "realizado_por_rol": responsable.get_rol_display() if responsable else "Administrador" if request.user.is_staff else "Usuario",
+        "direccion_ip": request_ip(request),
+        "agente_usuario": request.META.get("HTTP_USER_AGENT", ""),
+    }
+
+
+def has_full_inventory_access(request):
+    responsable = current_responsable(request)
+    return request.user.is_staff or (responsable and responsable.rol == Responsable.Rol.MESA_TIC)
+
+
+def can_manage_equipment(request, equipo):
+    if has_full_inventory_access(request):
+        return True
+
+    responsable = current_responsable(request)
+    return bool(responsable and responsable.ubicacion_id == equipo.ubicacion_id)
+
+
+def parse_date_field(value):
+    value = (value or "").strip()
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def validate_invoice_file(uploaded_file):
+    if not uploaded_file:
+        return None
+
+    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+    allowed_extensions = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
+    suffix = uploaded_file.name.lower().rsplit(".", 1)
+    extension = f".{suffix[-1]}" if len(suffix) > 1 else ""
+
+    if uploaded_file.content_type not in allowed_types or extension not in allowed_extensions:
+        return "La factura debe ser PDF o imagen JPG, PNG o WEBP."
+
+    return None
+
+
+def session_user_payload(request):
+    responsable = Responsable.objects.filter(user=request.user, activo=True).select_related("ubicacion").first()
+    if responsable:
+        return {
+            "name": responsable.nombre,
+            "username": responsable.usuario,
+            "role": responsable.get_rol_display(),
+            "scope": responsable.ubicacion.nombre if responsable.ubicacion else "Todas las ubicaciones",
+        }
+
+    return {
+        "name": request.user.get_full_name() or request.user.username,
+        "username": request.user.username,
+        "role": "Administrador" if request.user.is_staff else "Usuario",
+        "scope": "Todas las ubicaciones" if request.user.is_staff else "Sin ubicacion asignada",
+    }
+
+
+@login_required
+def home(request):
+    equipos = Equipo.objects.select_related("ubicacion").prefetch_related("movimientos", "resguardos").all()
+    ubicaciones = Ubicacion.objects.filter(activa=True).order_by("nombre")
+    responsables = Responsable.objects.select_related("ubicacion", "user").order_by("nombre")
+    tipos_equipo = TipoEquipo.objects.filter(activo=True).order_by("nombre")
+    marcas_equipo = MarcaEquipo.objects.filter(activo=True).order_by("nombre")
+    solicitudes_tipo = SolicitudTipoEquipo.objects.filter(estado=SolicitudTipoEquipo.Estado.PENDIENTE)
+    solicitudes_marca = SolicitudMarcaEquipo.objects.filter(estado=SolicitudMarcaEquipo.Estado.PENDIENTE)
+    context = {
+        "equipment_data": [equipment_payload(equipo) for equipo in equipos],
+        "location_data": [location_payload(ubicacion) for ubicacion in ubicaciones],
+        "responsible_data": [responsible_payload(responsable) for responsable in responsables],
+        "equipment_type_data": list(tipos_equipo.values("id", "nombre")),
+        "equipment_brand_data": list(marcas_equipo.values("id", "nombre")),
+        "equipment_type_request_data": [
+            equipment_type_request_payload(solicitud) for solicitud in solicitudes_tipo
+        ],
+        "equipment_brand_request_data": [
+            equipment_brand_request_payload(solicitud) for solicitud in solicitudes_marca
+        ],
+        "current_role_value": current_role_value(request),
+        "session_user": session_user_payload(request),
+        "can_manage_equipment_types": request.user.is_staff,
+    }
+    return render(request, "inventario/index.html", context)
+
+
+def admin_required_json(request):
+    if request.user.is_staff:
+        return None
+    return JsonResponse({"error": "Solo el administrador puede realizar esta accion."}, status=403)
+
+
+def parse_bool(value):
+    return str(value).lower() in {"true", "1", "activo", "on"}
+
+
+def normalize_role(value):
+    role = (value or "").strip()
+    allowed = {choice.value for choice in Responsable.Rol}
+    return role if role in allowed else ""
+
+
+def get_responsable_form_data(request, require_password=False):
+    nombre = request.POST.get("nombre", "").strip()
+    usuario = request.POST.get("usuario", "").strip()
+    password = request.POST.get("password", "")
+    rol = normalize_role(request.POST.get("rol"))
+    ubicacion_id = request.POST.get("ubicacion") or None
+    activo = parse_bool(request.POST.get("activo", "true"))
+
+    if not nombre or not usuario or not rol:
+        return None, "Nombre, usuario y rol son obligatorios."
+
+    if require_password and not password:
+        return None, "La contrasena inicial es obligatoria."
+
+    ubicacion = None
+    if rol in {Responsable.Rol.FRENTE, Responsable.Rol.MESA}:
+        if not ubicacion_id:
+            return None, "Selecciona el frente o mesa que administrara."
+        ubicacion = get_object_or_404(Ubicacion, pk=ubicacion_id)
+
+    return {
+        "nombre": nombre,
+        "usuario": usuario,
+        "password": password,
+        "rol": rol,
+        "ubicacion": ubicacion,
+        "activo": activo,
+    }, None
+
+
+@login_required
+def equipo_qr(request, numero_serie):
+    equipo = get_object_or_404(Equipo, numero_serie=numero_serie)
+    qr_target = request.build_absolute_uri(f"/q/{quote(equipo.numero_serie, safe='')}/")
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_Q,
+        box_size=16,
+        border=4,
+    )
+    qr.add_data(qr_target)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    response = HttpResponse(buffer.getvalue(), content_type="image/png")
+    response["Content-Disposition"] = f'inline; filename="SICI-{equipo.numero_serie}.png"'
+    return response
+
+
+@login_required
+def equipo_qr_link(request, numero_serie):
+    equipo = get_object_or_404(Equipo, numero_serie=numero_serie)
+    return redirect(f"/?{urlencode({'qr': equipo.numero_serie})}")
+
+
+@login_required
+@require_POST
+def crear_ubicacion(request):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    tipo = request.POST.get("tipo")
+    nombre = request.POST.get("nombre", "").strip()
+    responsable_nombre = request.POST.get("responsable_nombre", "").strip()
+    activa = parse_bool(request.POST.get("activa"))
+
+    if tipo not in {Ubicacion.Tipo.FRENTE, Ubicacion.Tipo.MESA}:
+        return JsonResponse({"error": "Tipo de ubicacion invalido."}, status=400)
+
+    if not nombre or not responsable_nombre:
+        return JsonResponse({"error": "Nombre y responsable son obligatorios."}, status=400)
+
+    responsable_cargo = "I.R.O." if tipo == Ubicacion.Tipo.FRENTE else "Jefe de Mesa"
+
+    ubicacion, created = Ubicacion.objects.get_or_create(
+        nombre=nombre,
+        defaults={
+            "tipo": tipo,
+            "responsable_nombre": responsable_nombre,
+            "responsable_cargo": responsable_cargo,
+            "activa": activa,
+        },
+    )
+
+    if not created:
+        return JsonResponse({"error": "Ya existe una ubicacion con ese nombre."}, status=400)
+
+    return JsonResponse({"location": location_payload(ubicacion)}, status=201)
+
+
+@login_required
+@require_POST
+def editar_ubicacion(request, ubicacion_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    ubicacion = get_object_or_404(Ubicacion, pk=ubicacion_id)
+    tipo = request.POST.get("tipo")
+    nombre = request.POST.get("nombre", "").strip()
+    responsable_nombre = request.POST.get("responsable_nombre", "").strip()
+
+    if tipo not in {Ubicacion.Tipo.FRENTE, Ubicacion.Tipo.MESA}:
+        return JsonResponse({"error": "Tipo de ubicacion invalido."}, status=400)
+
+    if not nombre or not responsable_nombre:
+        return JsonResponse({"error": "Nombre y responsable son obligatorios."}, status=400)
+
+    if Ubicacion.objects.exclude(pk=ubicacion.pk).filter(nombre__iexact=nombre).exists():
+        return JsonResponse({"error": "Ya existe una ubicacion con ese nombre."}, status=400)
+
+    ubicacion.tipo = tipo
+    ubicacion.nombre = nombre
+    ubicacion.responsable_nombre = responsable_nombre
+    ubicacion.responsable_cargo = "I.R.O." if tipo == Ubicacion.Tipo.FRENTE else "Jefe de Mesa"
+    ubicacion.activa = parse_bool(request.POST.get("activa"))
+    ubicacion.save()
+    return JsonResponse({"location": location_payload(ubicacion)})
+
+
+@login_required
+@require_POST
+def eliminar_ubicacion(request, ubicacion_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    ubicacion = get_object_or_404(Ubicacion, pk=ubicacion_id)
+    if ubicacion.equipo_set.exists() or ubicacion.responsable_set.exists():
+        return JsonResponse(
+            {"error": "No se puede eliminar porque tiene equipos o responsables asociados."},
+            status=400,
+        )
+
+    ubicacion.delete()
+    return JsonResponse({"deleted": ubicacion_id})
+
+
+@login_required
+@require_POST
+def crear_responsable(request):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    data, error_message = get_responsable_form_data(request, require_password=True)
+    if error_message:
+        return JsonResponse({"error": error_message}, status=400)
+
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=data["usuario"],
+                password=data["password"],
+                first_name=data["nombre"],
+                is_staff=data["rol"] == Responsable.Rol.ADMIN,
+                is_active=data["activo"],
+            )
+            responsable = Responsable.objects.create(
+                user=user,
+                nombre=data["nombre"],
+                usuario=data["usuario"],
+                rol=data["rol"],
+                ubicacion=data["ubicacion"],
+                activo=data["activo"],
+            )
+    except IntegrityError:
+        return JsonResponse({"error": "Ya existe un usuario con ese nombre."}, status=400)
+
+    return JsonResponse({"responsible": responsible_payload(responsable)}, status=201)
+
+
+@login_required
+@require_POST
+def editar_responsable(request, responsable_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    responsable = get_object_or_404(Responsable.objects.select_related("user"), pk=responsable_id)
+    data, error_message = get_responsable_form_data(request)
+    if error_message:
+        return JsonResponse({"error": error_message}, status=400)
+
+    if Responsable.objects.exclude(pk=responsable.pk).filter(usuario__iexact=data["usuario"]).exists():
+        return JsonResponse({"error": "Ya existe un responsable con ese usuario."}, status=400)
+
+    if User.objects.exclude(pk=responsable.user_id).filter(username__iexact=data["usuario"]).exists():
+        return JsonResponse({"error": "Ya existe un usuario con ese nombre."}, status=400)
+
+    with transaction.atomic():
+        responsable.nombre = data["nombre"]
+        responsable.usuario = data["usuario"]
+        responsable.rol = data["rol"]
+        responsable.ubicacion = data["ubicacion"]
+        responsable.activo = data["activo"]
+        responsable.save()
+
+        if responsable.user:
+            responsable.user.username = data["usuario"]
+            responsable.user.first_name = data["nombre"]
+            responsable.user.is_staff = data["rol"] == Responsable.Rol.ADMIN
+            responsable.user.is_active = data["activo"]
+            responsable.user.save()
+
+    return JsonResponse({"responsible": responsible_payload(responsable)})
+
+
+@login_required
+@require_POST
+def cambiar_password_responsable(request, responsable_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    responsable = get_object_or_404(Responsable.objects.select_related("user"), pk=responsable_id)
+    password = request.POST.get("password", "")
+    if not password:
+        return JsonResponse({"error": "La nueva contrasena es obligatoria."}, status=400)
+
+    if not responsable.user:
+        return JsonResponse({"error": "Este responsable no tiene usuario ligado."}, status=400)
+
+    responsable.user.set_password(password)
+    responsable.user.save()
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def eliminar_responsable(request, responsable_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    responsable = get_object_or_404(Responsable.objects.select_related("user"), pk=responsable_id)
+    if responsable.user_id == request.user.id:
+        return JsonResponse({"error": "No puedes eliminar tu propio usuario mientras estas conectado."}, status=400)
+
+    user = responsable.user
+    responsable.delete()
+    if user:
+        user.delete()
+    return JsonResponse({"deleted": responsable_id})
+
+
+@login_required
+@require_POST
+def crear_equipo(request):
+    tipo_nombre = request.POST.get("tipo_equipo", "").strip()
+    numero_serie = request.POST.get("numero_serie", "").strip()
+    ubicacion_id = request.POST.get("ubicacion", "").strip()
+    estado_display = request.POST.get("estado", "").strip()
+    asignado_a = request.POST.get("asignado_a", "").strip()
+
+    if not tipo_nombre or not numero_serie or not ubicacion_id or not estado_display:
+        return JsonResponse({"error": "Tipo de equipo, numero de serie, ubicacion y estado son obligatorios."}, status=400)
+
+    estado_map = {label: value for value, label in Equipo.Estado.choices}
+    estado = estado_map.get(estado_display)
+    if not estado:
+        return JsonResponse({"error": "Estado invalido."}, status=400)
+
+    if estado == Equipo.Estado.ASIGNADO and not asignado_a:
+        return JsonResponse({"error": "Indica a quien esta asignado el equipo."}, status=400)
+
+    if estado == Equipo.Estado.DISPONIBLE:
+        asignado_a = ""
+
+    tipo_equipo = TipoEquipo.objects.filter(nombre__iexact=tipo_nombre, activo=True).first()
+    if not tipo_equipo:
+        return JsonResponse({"error": "Selecciona un tipo de equipo registrado."}, status=400)
+
+    marca_nombre = request.POST.get("marca", "").strip()
+    marca_equipo = None
+    if marca_nombre:
+        marca_equipo = MarcaEquipo.objects.filter(nombre__iexact=marca_nombre, activo=True).first()
+        if not marca_equipo:
+            return JsonResponse({"error": "Selecciona una marca registrada o solicita al administrador crearla."}, status=400)
+        marca_nombre = marca_equipo.nombre
+
+    ubicacion = get_object_or_404(Ubicacion, pk=ubicacion_id, activa=True)
+    responsable = current_responsable(request)
+    if not has_full_inventory_access(request):
+        if not responsable or responsable.ubicacion_id != ubicacion.id:
+            return JsonResponse({"error": "Solo puedes registrar equipos en tu frente o mesa."}, status=403)
+
+    if Equipo.objects.filter(numero_serie__iexact=numero_serie).exists():
+        return JsonResponse({"error": "Ya existe un equipo con ese numero de serie."}, status=400)
+
+    memoria_ram = request.POST.get("memoria_ram", "").strip()
+    almacenamiento = request.POST.get("almacenamiento", "").strip()
+    if memoria_ram and memoria_ram not in RAM_OPTIONS:
+        return JsonResponse({"error": "Selecciona una memoria RAM valida del catalogo."}, status=400)
+    if almacenamiento and almacenamiento not in STORAGE_OPTIONS:
+        return JsonResponse({"error": "Selecciona un almacenamiento valido del catalogo."}, status=400)
+
+    invoice_error = validate_invoice_file(request.FILES.get("factura"))
+    if invoice_error:
+        return JsonResponse({"error": invoice_error}, status=400)
+
+    try:
+        fecha_compra = parse_date_field(request.POST.get("fecha_compra"))
+        garantia_hasta = parse_date_field(request.POST.get("garantia_hasta"))
+    except ValueError:
+        return JsonResponse({"error": "Formato de fecha invalido."}, status=400)
+
+    with transaction.atomic():
+        equipo = Equipo.objects.create(
+            tipo=tipo_equipo.nombre,
+            tipo_equipo=tipo_equipo,
+            marca_equipo=marca_equipo,
+            marca=marca_nombre,
+            modelo=request.POST.get("modelo", "").strip(),
+            numero_serie=numero_serie,
+            procesador=request.POST.get("procesador", "").strip(),
+            memoria_ram=memoria_ram,
+            almacenamiento=almacenamiento,
+            sistema_operativo=request.POST.get("sistema_operativo", "").strip(),
+            mac_ethernet=request.POST.get("mac_ethernet", "").strip(),
+            mac_wifi=request.POST.get("mac_wifi", "").strip(),
+            fecha_compra=fecha_compra,
+            garantia_hasta=garantia_hasta,
+            factura=request.FILES.get("factura"),
+            estado=estado,
+            ubicacion=ubicacion,
+            asignado_a=asignado_a,
+            observaciones=request.POST.get("observaciones", "").strip(),
+        )
+
+        if estado == Equipo.Estado.ASIGNADO:
+            movimiento_tipo = Movimiento.Tipo.ASIGNACION
+            descripcion = f"Alta de equipo y asignacion inicial a {asignado_a}."
+        elif estado == Equipo.Estado.MANTENIMIENTO:
+            movimiento_tipo = Movimiento.Tipo.MANTENIMIENTO
+            descripcion = "Alta de equipo en mantenimiento."
+        elif estado == Equipo.Estado.BAJA:
+            movimiento_tipo = Movimiento.Tipo.BAJA
+            descripcion = "Alta de equipo dado de baja."
+        else:
+            movimiento_tipo = Movimiento.Tipo.ALTA
+            descripcion = "Alta de equipo disponible."
+
+        Movimiento.objects.create(
+            equipo=equipo,
+            tipo=movimiento_tipo,
+            descripcion=descripcion,
+            **movement_actor_data(request, responsable),
+            ubicacion=ubicacion,
+            estado_equipo=estado,
+            asignado_a=asignado_a,
+        )
+
+    return JsonResponse({"equipment": equipment_payload(equipo)}, status=201)
+
+
+@login_required
+@require_POST
+def cambiar_estado_equipo(request, numero_serie):
+    equipo = get_object_or_404(Equipo.objects.select_related("ubicacion"), numero_serie=numero_serie)
+    if not can_manage_equipment(request, equipo):
+        return JsonResponse({"error": "Solo puedes modificar equipos de tu frente o mesa."}, status=403)
+
+    estado_display = request.POST.get("estado", "").strip()
+    motivo = request.POST.get("motivo", "").strip()
+    estado_map = {label: value for value, label in Equipo.Estado.choices}
+    estado = estado_map.get(estado_display)
+    if not estado:
+        return JsonResponse({"error": "Estado invalido."}, status=400)
+
+    asignado_a = request.POST.get("asignado_a", "").strip()
+    if estado == Equipo.Estado.ASIGNADO and not asignado_a:
+        return JsonResponse({"error": "Indica a quien esta asignado el equipo."}, status=400)
+
+    if estado == Equipo.Estado.MANTENIMIENTO and not motivo:
+        return JsonResponse({"error": "Indica la razon por la que el equipo pasa a mantenimiento."}, status=400)
+
+    if estado in {Equipo.Estado.DISPONIBLE, Equipo.Estado.BAJA}:
+        asignado_a = ""
+
+    ubicacion = equipo.ubicacion
+    ubicacion_id = request.POST.get("ubicacion", "").strip()
+    if ubicacion_id:
+        ubicacion = get_object_or_404(Ubicacion, pk=ubicacion_id, activa=True)
+        if not has_full_inventory_access(request) and ubicacion.id != equipo.ubicacion_id:
+            return JsonResponse({"error": "No puedes mover equipos fuera de tu frente o mesa."}, status=403)
+
+    responsable = current_responsable(request)
+    tipo_movimiento = Movimiento.Tipo.CAMBIO_ESTADO
+    descripcion = f"Cambio de estado a {estado_display}."
+    if estado == Equipo.Estado.ASIGNADO:
+        tipo_movimiento = Movimiento.Tipo.ASIGNACION
+        descripcion = f"Asignacion a {asignado_a}."
+    elif estado == Equipo.Estado.MANTENIMIENTO:
+        tipo_movimiento = Movimiento.Tipo.MANTENIMIENTO
+        descripcion = f"Equipo marcado en mantenimiento. Razon: {motivo}"
+    elif estado == Equipo.Estado.BAJA:
+        tipo_movimiento = Movimiento.Tipo.BAJA
+        descripcion = f"Equipo dado de baja.{f' Motivo: {motivo}' if motivo else ''}"
+    elif motivo:
+        descripcion = f"{descripcion} Motivo: {motivo}"
+
+    equipo.estado = estado
+    equipo.asignado_a = asignado_a
+    equipo.ubicacion = ubicacion
+    equipo.save(update_fields=["estado", "asignado_a", "ubicacion", "actualizado"])
+
+    Movimiento.objects.create(
+        equipo=equipo,
+        tipo=tipo_movimiento,
+        descripcion=descripcion,
+        **movement_actor_data(request, responsable),
+        ubicacion=ubicacion,
+        estado_equipo=estado,
+        asignado_a=asignado_a,
+    )
+
+    return JsonResponse({"equipment": equipment_payload(equipo)})
+
+
+@login_required
+@require_POST
+def eliminar_equipo(request, numero_serie):
+    equipo = get_object_or_404(Equipo.objects.select_related("ubicacion"), numero_serie=numero_serie)
+    if not has_full_inventory_access(request):
+        return JsonResponse({"error": "Solo el administrador o Mesa TIC pueden eliminar equipos."}, status=403)
+
+    responsable = current_responsable(request)
+    deleted_serial = equipo.numero_serie
+    movimientos = [
+        movement_payload(movimiento)
+        for movimiento in equipo.movimientos.select_related("ubicacion", "realizado_por").all()
+    ]
+    snapshot = equipment_payload(equipo)
+    snapshot["history"] = movimientos
+
+    EquipoEliminado.objects.create(
+        numero_serie=equipo.numero_serie,
+        descripcion_equipo=str(equipo),
+        eliminado_por_usuario=request.user,
+        eliminado_por_responsable=responsable,
+        eliminado_por_nombre=responsable.nombre if responsable else request.user.get_full_name() or request.user.username,
+        eliminado_por_rol=responsable.get_rol_display() if responsable else "Administrador" if request.user.is_staff else "Usuario",
+        direccion_ip=request_ip(request),
+        agente_usuario=request.META.get("HTTP_USER_AGENT", ""),
+        ubicacion_nombre=equipo.ubicacion.nombre,
+        estado=equipo.estado,
+        asignado_a=equipo.asignado_a,
+        snapshot=snapshot,
+    )
+    equipo.delete()
+    return JsonResponse({"deleted": deleted_serial})
+
+
+def assignment_date_for_equipment(equipo):
+    assignment = equipo.movimientos.filter(tipo=Movimiento.Tipo.ASIGNACION).first()
+    return timezone.localtime(assignment.creado).date() if assignment else timezone.localdate(equipo.actualizado)
+
+
+def equipment_description_for_pdf(equipo):
+    parts = [
+        f"{equipo.tipo}: {equipo.marca} {equipo.modelo}".strip(),
+        f"Numero de serie: {equipo.numero_serie}",
+    ]
+    if equipo.procesador:
+        parts.append(f"Procesador: {equipo.procesador}")
+    if equipo.memoria_ram:
+        parts.append(f"RAM: {equipo.memoria_ram}")
+    if equipo.almacenamiento:
+        parts.append(f"Almacenamiento: {equipo.almacenamiento}")
+    if equipo.mac_ethernet:
+        parts.append(f"MAC Ethernet: {equipo.mac_ethernet}")
+    if equipo.mac_wifi:
+        parts.append(f"MAC WiFi: {equipo.mac_wifi}")
+    return "<br/>".join(parts)
+
+
+def build_safekeeping_pdf(equipo, fecha_asignacion):
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        rightMargin=1.7 * cm,
+        leftMargin=1.7 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+        title=f"Resguardo {equipo.numero_serie}",
+    )
+    styles = getSampleStyleSheet()
+    normal = ParagraphStyle("NormalSICI", parent=styles["Normal"], fontName="Helvetica", fontSize=9, leading=12)
+    centered = ParagraphStyle("CenteredSICI", parent=normal, alignment=TA_CENTER)
+    justified = ParagraphStyle("JustifiedSICI", parent=normal, alignment=TA_JUSTIFY)
+    small = ParagraphStyle("SmallSICI", parent=normal, fontSize=8, leading=10)
+    title = ParagraphStyle("TitleSICI", parent=normal, fontName="Helvetica-Bold", fontSize=12, leading=15, alignment=TA_CENTER)
+
+    location_label = "Mesa" if equipo.ubicacion.tipo == Ubicacion.Tipo.MESA else "Frente"
+    location_name = equipo.ubicacion.nombre
+    manager_role = equipo.ubicacion.responsable_cargo or ("Jefe de Mesa" if equipo.ubicacion.tipo == Ubicacion.Tipo.MESA else "I.R.O.")
+    manager_name = equipo.ubicacion.responsable_nombre
+    date_text = fecha_asignacion.strftime("%d/%m/%Y")
+
+    story = [
+        Paragraph("<b>Ejercito Mexicano.</b>", centered),
+        Paragraph(f'Agto. Ings. "Felipe Angeles". &nbsp;&nbsp; {location_label} {location_name}.', centered),
+        Spacer(1, 8),
+        Paragraph("<b>RECIBO</b>", title),
+        Spacer(1, 10),
+        Paragraph('Unidad o dependencia: Agto. Ings. "Felipe Angeles".', normal),
+        Paragraph(f"{location_label}: <b>{location_name}</b>.", normal),
+        Paragraph(f"Responsable: <b>{equipo.asignado_a}</b>.", normal),
+        Paragraph(f"Concepto: Resguardo de equipos {location_label} {location_name}.", normal),
+        Spacer(1, 10),
+    ]
+
+    equipment_table = Table(
+        [
+            [Paragraph("<b>Cantidad</b>", centered), Paragraph("<b>Descripcion</b>", centered), Paragraph("<b>Observaciones</b>", centered)],
+            [Paragraph("1", centered), Paragraph(equipment_description_for_pdf(equipo), small), Paragraph(equipo.observaciones or "Sin observaciones.", small)],
+        ],
+        colWidths=[2 * cm, 11.7 * cm, 4.5 * cm],
+        rowHeights=[0.8 * cm, 4.4 * cm],
+    )
+    equipment_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8E8E8")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.extend(
+        [
+            equipment_table,
+            Spacer(1, 12),
+            Paragraph(
+                f'Campo Mil. Estrategico Conjunto No. 37-D, "Gral. Div. P.A. Alfredo Lezama Alvarez", '
+                f"Santa Lucia, Edo. de Mex., a {date_text}.",
+                centered,
+            ),
+            Spacer(1, 12),
+            Paragraph(
+                "<b>Nota:</b> Los bienes antes descritos quedan bajo resguardo de la persona que los recibe, "
+                "por lo que cualquier falla o descompostura ocasionada por el uso incorrecto de los mismos "
+                "sera cubierta por dicha persona.",
+                justified,
+            ),
+            Spacer(1, 28),
+        ]
+    )
+
+    signature_table = Table(
+        [
+            [Paragraph("<b>Entrego:</b>", centered), Paragraph("<b>Recibio:</b>", centered)],
+            [Spacer(1, 35), Spacer(1, 35)],
+            [Paragraph("________________________________", centered), Paragraph("________________________________", centered)],
+            [Paragraph("Nombre, grado y firma", centered), Paragraph(equipo.asignado_a, centered)],
+        ],
+        colWidths=[9.1 * cm, 9.1 * cm],
+    )
+    signature_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM")]))
+    story.extend(
+        [
+            signature_table,
+            Spacer(1, 26),
+            Paragraph("<b>Autorizo:</b>", centered),
+            Spacer(1, 34),
+            Paragraph("________________________________", centered),
+            Paragraph(f"{manager_role}.", centered),
+            Paragraph(f"<b>{manager_name}</b>", centered),
+        ]
+    )
+
+    document.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+@login_required
+@require_POST
+def generar_resguardo_equipo(request, numero_serie):
+    equipo = get_object_or_404(
+        Equipo.objects.select_related("ubicacion").prefetch_related("movimientos"),
+        numero_serie=numero_serie,
+    )
+    if not can_manage_equipment(request, equipo):
+        return HttpResponse("No tienes permiso para generar este resguardo.", status=403)
+    if equipo.estado != Equipo.Estado.ASIGNADO or not equipo.asignado_a:
+        return HttpResponse("El equipo debe estar asignado para generar un resguardo.", status=400)
+
+    responsable = current_responsable(request)
+    pending_safekeeping = equipo.resguardos.filter(activo=True, archivo_firmado="").first()
+    replace_pending = str(request.POST.get("reemplazar", "")).lower() in {"true", "1", "si"}
+    if pending_safekeeping and not replace_pending:
+        return JsonResponse(
+            {
+                "error": "Ya existe un resguardo generado pendiente de firma.",
+                "requiresConfirmation": True,
+            },
+            status=409,
+        )
+
+    actor_name = responsable.nombre if responsable else request.user.get_full_name() or request.user.username
+    if pending_safekeeping:
+        pending_safekeeping.activo = False
+        pending_safekeeping.reemplazado_por = request.user
+        pending_safekeeping.reemplazado_por_nombre = actor_name
+        pending_safekeeping.reemplazado_desde_ip = request_ip(request)
+        pending_safekeeping.reemplazado = timezone.now()
+        pending_safekeeping.save(
+            update_fields=[
+                "activo",
+                "reemplazado_por",
+                "reemplazado_por_nombre",
+                "reemplazado_desde_ip",
+                "reemplazado",
+            ]
+        )
+
+    fecha_asignacion = assignment_date_for_equipment(equipo)
+    resguardo = ResguardoEquipo.objects.create(
+        equipo=equipo,
+        asignado_a=equipo.asignado_a,
+        ubicacion_nombre=equipo.ubicacion.nombre,
+        fecha_asignacion=fecha_asignacion,
+        generado_por=request.user,
+        generado_por_nombre=actor_name,
+        generado_desde_ip=request_ip(request),
+    )
+    pdf = build_safekeeping_pdf(equipo, fecha_asignacion)
+    response = FileResponse(pdf, as_attachment=True, filename=f"Resguardo-{equipo.numero_serie}.pdf")
+    response["X-SICI-Resguardo-Id"] = str(resguardo.id)
+    response["X-SICI-Resguardo-Fecha"] = resguardo.fecha_asignacion.strftime("%d/%m/%Y")
+    response["X-SICI-Resguardo-Generado"] = timezone.localtime(resguardo.generado).strftime("%d/%m/%Y %H:%M")
+    response["X-SICI-Resguardo-Usuario"] = quote(resguardo.generado_por_nombre)
+    return response
+
+
+@login_required
+@require_POST
+def cargar_resguardo_firmado(request, numero_serie):
+    equipo = get_object_or_404(Equipo.objects.select_related("ubicacion"), numero_serie=numero_serie)
+    if not can_manage_equipment(request, equipo):
+        return JsonResponse({"error": "No tienes permiso para cargar este resguardo."}, status=403)
+
+    uploaded_file = request.FILES.get("archivo")
+    if not uploaded_file:
+        return JsonResponse({"error": "Selecciona el PDF firmado."}, status=400)
+    if uploaded_file.content_type != "application/pdf" or not uploaded_file.name.lower().endswith(".pdf"):
+        return JsonResponse({"error": "El resguardo firmado debe ser un archivo PDF."}, status=400)
+    if uploaded_file.size > 15 * 1024 * 1024:
+        return JsonResponse({"error": "El PDF firmado no debe superar 15 MB."}, status=400)
+
+    resguardo = equipo.resguardos.filter(activo=True, archivo_firmado="").first()
+    if not resguardo:
+        return JsonResponse({"error": "Primero genera el resguardo PDF desde la ficha."}, status=400)
+
+    responsable = current_responsable(request)
+    resguardo.archivo_firmado = uploaded_file
+    resguardo.cargado_por = request.user
+    resguardo.cargado_por_nombre = responsable.nombre if responsable else request.user.get_full_name() or request.user.username
+    resguardo.cargado_desde_ip = request_ip(request)
+    resguardo.cargado = timezone.now()
+    resguardo.save(
+        update_fields=[
+            "archivo_firmado",
+            "cargado_por",
+            "cargado_por_nombre",
+            "cargado_desde_ip",
+            "cargado",
+        ]
+    )
+    return JsonResponse({"safekeeping": safekeeping_payload(resguardo)})
+
+
+@login_required
+def descargar_resguardo_firmado(request, resguardo_id):
+    resguardo = get_object_or_404(ResguardoEquipo.objects.select_related("equipo"), pk=resguardo_id)
+    if not can_manage_equipment(request, resguardo.equipo):
+        return HttpResponse("No tienes permiso para consultar este resguardo.", status=403)
+    if not resguardo.archivo_firmado:
+        return HttpResponse("Este resguardo no tiene un PDF firmado.", status=404)
+
+    return FileResponse(
+        resguardo.archivo_firmado.open("rb"),
+        as_attachment=False,
+        filename=f"Resguardo-firmado-{resguardo.equipo.numero_serie}.pdf",
+        content_type="application/pdf",
+    )
+
+
+@login_required
+@require_POST
+def crear_tipo_equipo(request):
+    if not request.user.is_staff:
+        return JsonResponse({"error": "No tienes permiso para crear tipos de equipo."}, status=403)
+
+    nombre = request.POST.get("nombre", "").strip()
+    if not nombre:
+        return JsonResponse({"error": "El nombre del tipo es obligatorio."}, status=400)
+
+    tipo, created = TipoEquipo.objects.get_or_create(nombre__iexact=nombre, defaults={"nombre": nombre})
+    if not created:
+        return JsonResponse({"error": "Ya existe un tipo de equipo con ese nombre."}, status=400)
+
+    return JsonResponse({"type": {"id": tipo.id, "nombre": tipo.nombre}}, status=201)
+
+
+@login_required
+@require_POST
+def solicitar_tipo_equipo(request):
+    nombre = request.POST.get("nombre", "").strip()
+    if not nombre:
+        return JsonResponse({"error": "El nombre del tipo es obligatorio."}, status=400)
+
+    if TipoEquipo.objects.filter(nombre__iexact=nombre).exists():
+        return JsonResponse({"error": "Ese tipo de equipo ya existe en el catalogo."}, status=400)
+
+    if SolicitudTipoEquipo.objects.filter(
+        nombre__iexact=nombre,
+        estado=SolicitudTipoEquipo.Estado.PENDIENTE,
+    ).exists():
+        return JsonResponse({"error": "Ya existe una solicitud pendiente para ese tipo."}, status=400)
+
+    solicitud = SolicitudTipoEquipo.objects.create(nombre=nombre, solicitante=request.user)
+    return JsonResponse({"request": equipment_type_request_payload(solicitud)}, status=201)
+
+
+@login_required
+@require_POST
+def aprobar_solicitud_tipo_equipo(request, solicitud_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    solicitud = get_object_or_404(SolicitudTipoEquipo, pk=solicitud_id)
+    if solicitud.estado != SolicitudTipoEquipo.Estado.PENDIENTE:
+        return JsonResponse({"error": "Esta solicitud ya fue atendida."}, status=400)
+
+    tipo, _ = TipoEquipo.objects.get_or_create(nombre__iexact=solicitud.nombre, defaults={"nombre": solicitud.nombre})
+    solicitud.estado = SolicitudTipoEquipo.Estado.APROBADA
+    solicitud.save()
+    return JsonResponse({
+        "request": equipment_type_request_payload(solicitud),
+        "type": {"id": tipo.id, "nombre": tipo.nombre},
+    })
+
+
+@login_required
+@require_POST
+def rechazar_solicitud_tipo_equipo(request, solicitud_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    solicitud = get_object_or_404(SolicitudTipoEquipo, pk=solicitud_id)
+    if solicitud.estado != SolicitudTipoEquipo.Estado.PENDIENTE:
+        return JsonResponse({"error": "Esta solicitud ya fue atendida."}, status=400)
+
+    solicitud.estado = SolicitudTipoEquipo.Estado.RECHAZADA
+    solicitud.comentario_admin = request.POST.get("comentario", "").strip()
+    solicitud.save()
+    return JsonResponse({"request": equipment_type_request_payload(solicitud)})
+
+
+@login_required
+@require_POST
+def crear_marca_equipo(request):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    nombre = request.POST.get("nombre", "").strip()
+    if not nombre:
+        return JsonResponse({"error": "El nombre de la marca es obligatorio."}, status=400)
+
+    marca, created = MarcaEquipo.objects.get_or_create(nombre__iexact=nombre, defaults={"nombre": nombre})
+    if not created:
+        return JsonResponse({"error": "Ya existe una marca con ese nombre."}, status=400)
+
+    return JsonResponse({"brand": {"id": marca.id, "nombre": marca.nombre}}, status=201)
+
+
+@login_required
+@require_POST
+def solicitar_marca_equipo(request):
+    nombre = request.POST.get("nombre", "").strip()
+    if not nombre:
+        return JsonResponse({"error": "El nombre de la marca es obligatorio."}, status=400)
+
+    if MarcaEquipo.objects.filter(nombre__iexact=nombre).exists():
+        return JsonResponse({"error": "Esa marca ya existe en el catalogo."}, status=400)
+
+    if SolicitudMarcaEquipo.objects.filter(
+        nombre__iexact=nombre,
+        estado=SolicitudMarcaEquipo.Estado.PENDIENTE,
+    ).exists():
+        return JsonResponse({"error": "Ya existe una solicitud pendiente para esa marca."}, status=400)
+
+    solicitud = SolicitudMarcaEquipo.objects.create(nombre=nombre, solicitante=request.user)
+    return JsonResponse({"request": equipment_brand_request_payload(solicitud)}, status=201)
+
+
+@login_required
+@require_POST
+def aprobar_solicitud_marca_equipo(request, solicitud_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    solicitud = get_object_or_404(SolicitudMarcaEquipo, pk=solicitud_id)
+    if solicitud.estado != SolicitudMarcaEquipo.Estado.PENDIENTE:
+        return JsonResponse({"error": "Esta solicitud ya fue atendida."}, status=400)
+
+    marca, _ = MarcaEquipo.objects.get_or_create(nombre__iexact=solicitud.nombre, defaults={"nombre": solicitud.nombre})
+    solicitud.estado = SolicitudMarcaEquipo.Estado.APROBADA
+    solicitud.save()
+    return JsonResponse({
+        "request": equipment_brand_request_payload(solicitud),
+        "brand": {"id": marca.id, "nombre": marca.nombre},
+    })
+
+
+@login_required
+@require_POST
+def rechazar_solicitud_marca_equipo(request, solicitud_id):
+    error = admin_required_json(request)
+    if error:
+        return error
+
+    solicitud = get_object_or_404(SolicitudMarcaEquipo, pk=solicitud_id)
+    if solicitud.estado != SolicitudMarcaEquipo.Estado.PENDIENTE:
+        return JsonResponse({"error": "Esta solicitud ya fue atendida."}, status=400)
+
+    solicitud.estado = SolicitudMarcaEquipo.Estado.RECHAZADA
+    solicitud.comentario_admin = request.POST.get("comentario", "").strip()
+    solicitud.save()
+    return JsonResponse({"request": equipment_brand_request_payload(solicitud)})

@@ -1,0 +1,14 @@
+﻿{% load static %}
+{{ equipment_data|json_script:"equipment-data" }}
+    {{ location_data|json_script:"location-data" }}
+    {{ responsible_data|json_script:"responsible-data" }}
+    {{ equipment_type_data|json_script:"equipment-type-data" }}
+    {{ equipment_brand_data|json_script:"equipment-brand-data" }}
+    {{ equipment_type_request_data|json_script:"equipment-type-request-data" }}
+    {{ equipment_brand_request_data|json_script:"equipment-brand-request-data" }}
+    <script>
+      window.SICI_QR_BASE_URL = "/equipos/";
+      window.SICI_CAN_MANAGE_EQUIPMENT_TYPES = {{ can_manage_equipment_types|yesno:"true,false" }};
+    </script>
+    <script src="{% static 'inventario/proveedores/jsQR.min.js' %}"></script>
+    <script src="{% static 'inventario/aplicacion.js' %}?v=20260606-4"></script>

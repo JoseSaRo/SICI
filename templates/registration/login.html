@@ -1,0 +1,54 @@
+<!doctype html>
+{% load static %}
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SICI | Acceso</title>
+    <link rel="stylesheet" href="{% static 'inventario/estilos.css' %}" />
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-panel">
+        <div class="login-logos">
+          <img src="{% static 'inventario/recursos/mesa_tic_logo.jpg' %}" alt="Logo Mesa TIC" />
+          <img src="{% static 'inventario/recursos/rodelagt_miniatura.png' %}" alt="Rodela del agrupamiento" />
+        </div>
+
+        <div class="login-heading">
+          <span class="eyebrow">Sistema de control</span>
+          <h1>SICI</h1>
+          <p>Control de inventario de equipos informaticos</p>
+        </div>
+
+        <form class="login-form" method="post" novalidate>
+          {% csrf_token %}
+          <div>
+            <h2>Acceso seguro</h2>
+            <p>Ingresa con tu usuario autorizado para administrar inventario.</p>
+          </div>
+
+          {% if form.errors %}
+            <p class="form-error">Usuario o contraseña incorrectos.</p>
+          {% endif %}
+
+          {% if next %}
+            <input type="hidden" name="next" value="{{ next }}" />
+          {% endif %}
+
+          <label for="{{ form.username.id_for_label }}">
+            Usuario
+            {{ form.username }}
+          </label>
+
+          <label for="{{ form.password.id_for_label }}">
+            Contraseña
+            {{ form.password }}
+          </label>
+
+          <button class="primary-btn full" type="submit">Entrar</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

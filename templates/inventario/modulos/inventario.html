@@ -1,0 +1,51 @@
+﻿<section class="view" id="inventory">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Control operativo</span>
+              <h2>Inventario de equipos</h2>
+            </div>
+            <div class="filters">
+              <button class="ghost-btn" data-import-trigger>Importar Excel</button>
+              <select id="frontFilter">
+                <option value="all">Todos los frentes y mesas</option>
+              </select>
+              <select id="statusFilter">
+                <option value="all">Todos los estados</option>
+                <option value="Asignado">Asignado</option>
+                <option value="Disponible">Disponible</option>
+                <option value="Mantenimiento">Mantenimiento</option>
+                <option value="Dado de baja">Dado de baja</option>
+              </select>
+            </div>
+          </div>
+          <div class="import-panel">
+            <div>
+              <span class="eyebrow">Carga inicial</span>
+              <h2>Importar inventario desde Excel</h2>
+              <p>Permite registrar varios equipos en una sola carga. Los usuarios de frente o mesa solo podran cargar equipos en su ubicacion asignada.</p>
+            </div>
+            <div class="import-actions">
+              <button class="primary-btn" data-import-trigger>Seleccionar archivo</button>
+              <button class="ghost-btn">Descargar plantilla</button>
+              <input id="excelInput" type="file" accept=".xlsx,.xls,.csv" />
+            </div>
+            <p class="import-status" id="importStatus">Formatos permitidos: .xlsx, .xls y .csv</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Equipo</th>
+                  <th>Serie</th>
+                  <th>Asignado a</th>
+                  <th>Frente</th>
+                  <th>Estado</th>
+                  <th>Garantia</th>
+                  <th>QR</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="inventoryRows"></tbody>
+            </table>
+          </div>
+        </section>

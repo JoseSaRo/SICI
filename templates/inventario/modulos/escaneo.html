@@ -1,0 +1,39 @@
+﻿<section class="view" id="scan">
+          <div class="scan-layout">
+            <section class="panel scanner-panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Lectura QR</span>
+                  <h2>Escaneo de articulos</h2>
+                </div>
+              </div>
+              <div class="scanner-frame">
+                <video id="scannerVideo" autoplay muted playsinline></video>
+                <div class="scanner-placeholder" id="scannerPlaceholder">
+                  <strong>QR listo para lectura</strong>
+                  <span>En iPhone usa tomar foto o subir imagen.</span>
+                </div>
+              </div>
+              <canvas id="scannerCanvas" hidden></canvas>
+              <div class="scanner-actions">
+                <button class="primary-btn" id="openCameraBtn">Abrir camara</button>
+                <button class="ghost-btn" id="stopCameraBtn">Detener</button>
+                <label class="upload-btn">
+                  Tomar foto
+                  <input id="qrCameraInput" type="file" accept="image/*" capture="environment" />
+                </label>
+                <label class="upload-btn">
+                  Subir imagen
+                  <input id="qrImageInput" type="file" accept="image/*" />
+                </label>
+              </div>
+            </section>
+
+            <aside class="panel scan-result">
+              <span class="eyebrow">Resultado</span>
+              <h2 id="scanStatus">Sin lectura</h2>
+              <p id="scanMessage">Escanea un QR o sube una imagen para buscar el articulo en inventario.</p>
+              <div id="scanItem"></div>
+            </aside>
+          </div>
+        </section>

@@ -1,0 +1,116 @@
+﻿<section class="view" id="equipment">
+          <div class="form-layout">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Registro</span>
+                  <h2>Caracteristicas del equipo</h2>
+                </div>
+              </div>
+              <form class="equipment-form" id="equipmentForm" autocomplete="off" enctype="multipart/form-data">
+                <label>Tipo de equipo
+                  <div class="type-combobox" id="equipmentTypeCombo">
+                    <input id="equipmentTypeInput" name="tipo_equipo" type="text" placeholder="Buscar o seleccionar tipo" autocomplete="off" aria-expanded="false" required />
+                    <button class="combo-toggle" id="equipmentTypeToggle" type="button" aria-label="Mostrar tipos de equipo">⌄</button>
+                    <div class="combo-menu form-collapsed" id="equipmentTypeMenu"></div>
+                  </div>
+                  <div class="combo-action">
+                    <button class="ghost-btn" id="toggleTypeForm" type="button">+</button>
+                  </div>
+                </label>
+                <label>Marca
+                  <div class="type-combobox" id="equipmentBrandCombo">
+                    <input id="equipmentBrandInput" name="marca" type="text" placeholder="Buscar o seleccionar marca" autocomplete="off" aria-expanded="false" />
+                    <button class="combo-toggle" id="equipmentBrandToggle" type="button" aria-label="Mostrar marcas">⌄</button>
+                    <div class="combo-menu form-collapsed" id="equipmentBrandMenu"></div>
+                  </div>
+                  <div class="combo-action">
+                    <button class="ghost-btn" id="toggleBrandForm" type="button">+</button>
+                  </div>
+                </label>
+                <label>Modelo<input name="modelo" type="text" placeholder="Latitude 5440" /></label>
+                <label>Numero de serie<input name="numero_serie" type="text" placeholder="Numero de serie" required /></label>
+                <label>Procesador<input name="procesador" type="text" placeholder="Intel Core i7" /></label>
+                <label>Memoria RAM
+                  <select name="memoria_ram">
+                    <option value="">No aplica / sin dato</option>
+                    <option>2 GB</option>
+                    <option>4 GB</option>
+                    <option>6 GB</option>
+                    <option>8 GB</option>
+                    <option>12 GB</option>
+                    <option>16 GB</option>
+                    <option>24 GB</option>
+                    <option>32 GB</option>
+                    <option>64 GB</option>
+                    <option>128 GB</option>
+                  </select>
+                </label>
+                <label>Almacenamiento
+                  <select name="almacenamiento">
+                    <option value="">No aplica / sin dato</option>
+                    <option>120 GB SSD</option>
+                    <option>128 GB SSD</option>
+                    <option>240 GB SSD</option>
+                    <option>250 GB SSD</option>
+                    <option>256 GB SSD</option>
+                    <option>480 GB SSD</option>
+                    <option>500 GB HDD</option>
+                    <option>500 GB SSD</option>
+                    <option>512 GB SSD</option>
+                    <option>1 TB HDD</option>
+                    <option>1 TB SSD</option>
+                    <option>2 TB HDD</option>
+                    <option>2 TB SSD</option>
+                    <option>4 TB HDD</option>
+                  </select>
+                </label>
+                <label>Sistema operativo<input name="sistema_operativo" type="text" placeholder="Windows 11 Pro" /></label>
+                <label>MAC Ethernet<input id="macEthernetInput" name="mac_ethernet" type="text" maxlength="17" placeholder="00:1A:2B:3C:4D:5E" /></label>
+                <label>MAC WiFi<input id="macWifiInput" name="mac_wifi" type="text" maxlength="17" placeholder="00:1A:2B:3C:4D:5F" /></label>
+                <label>Fecha de compra<input name="fecha_compra" type="date" /></label>
+                <label>Garantia hasta<input name="garantia_hasta" type="date" /></label>
+                <label class="wide">Observaciones<textarea name="observaciones" placeholder="Accesorios, condiciones o notas del equipo"></textarea></label>
+              </form>
+              <form class="inline-create-form form-collapsed" id="equipmentTypeForm" autocomplete="off">
+                <label>Nuevo tipo de equipo<input id="newEquipmentTypeName" type="text" placeholder="Ej. Laptop, Impresora, Access Point" autocomplete="off" /></label>
+                <button class="primary-btn" id="equipmentTypeSubmit" type="submit">Agregar tipo</button>
+                <p class="form-status" id="equipmentTypeStatus"></p>
+              </form>
+              <form class="inline-create-form form-collapsed" id="equipmentBrandForm" autocomplete="off">
+                <label>Nueva marca<input id="newEquipmentBrandName" type="text" placeholder="Ej. Dell, HP, Lenovo" autocomplete="off" /></label>
+                <button class="primary-btn" id="equipmentBrandSubmit" type="submit">Agregar marca</button>
+                <p class="form-status" id="equipmentBrandStatus"></p>
+              </form>
+              <section class="type-request-panel admin-only" id="equipmentTypeRequestPanel">
+                <div>
+                  <span class="eyebrow">Solicitudes</span>
+                  <h2>Tipos de equipo pendientes</h2>
+                </div>
+                <div class="request-list" id="equipmentTypeRequestList">
+                  <p class="empty-state">Sin solicitudes pendientes.</p>
+                </div>
+              </section>
+              <section class="type-request-panel admin-only" id="equipmentBrandRequestPanel">
+                <div>
+                  <span class="eyebrow">Solicitudes</span>
+                  <h2>Marcas pendientes</h2>
+                </div>
+                <div class="request-list" id="equipmentBrandRequestList">
+                  <p class="empty-state">Sin solicitudes pendientes.</p>
+                </div>
+              </section>
+            </section>
+
+            <aside class="panel assignment-panel">
+              <span class="eyebrow">Asignacion</span>
+              <h2>Asignacion y ubicacion</h2>
+              <label>Asignado a<input id="assignmentPerson" name="asignado_a" form="equipmentForm" type="text" placeholder="Nombre de la persona" autocomplete="off" /><small id="assignmentPersonHint">Obligatorio cuando el estado es Asignado.</small></label>
+              <label>Frente o mesa<select id="assignmentFront" name="ubicacion" form="equipmentForm" required><option>Sin ubicaciones registradas</option></select></label>
+              <label>Estado<select id="assignmentStatus" name="estado" form="equipmentForm"><option>Asignado</option><option>Disponible</option><option>Mantenimiento</option><option>Dado de baja</option></select></label>
+              <label>Factura<input id="invoiceInput" name="factura" form="equipmentForm" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" /><small>Opcional. PDF o imagen.</small></label>
+              <button class="primary-btn full" form="equipmentForm" type="submit">Guardar registro</button>
+              <p class="form-status full" id="equipmentFormStatus"></p>
+            </aside>
+          </div>
+        </section>
