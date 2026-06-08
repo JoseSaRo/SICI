@@ -1,5 +1,7 @@
 from io import BytesIO
 from datetime import datetime
+import csv
+from io import TextIOWrapper
 from urllib.parse import quote, urlencode
 
 from django.contrib.auth import get_user_model
@@ -12,6 +14,9 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 import qrcode
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.worksheet.datavalidation import DataValidation
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import LETTER
@@ -53,6 +58,25 @@ STORAGE_OPTIONS = {
     "2 TB SSD",
     "4 TB HDD",
 }
+
+EQUIPMENT_IMPORT_HEADERS = [
+    "tipo_equipo",
+    "marca",
+    "modelo",
+    "numero_serie",
+    "procesador",
+    "memoria_ram",
+    "almacenamiento",
+    "sistema_operativo",
+    "mac_ethernet",
+    "mac_wifi",
+    "fecha_compra",
+    "garantia_hasta",
+    "ubicacion",
+    "estado",
+    "asignado_a",
+    "observaciones",
+]
 
 
 def format_date(value):
@@ -226,6 +250,252 @@ def validate_invoice_file(uploaded_file):
         return "La factura debe ser PDF o imagen JPG, PNG o WEBP."
 
     return None
+
+
+def excel_date(value):
+    if value in {None, ""}:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        return value
+
+    text = str(value).strip()
+    for date_format in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, date_format).date()
+        except ValueError:
+            continue
+    raise ValueError
+
+
+def import_rows_from_file(uploaded_file):
+    extension = uploaded_file.name.lower().rsplit(".", 1)[-1]
+    if extension == "xlsx":
+        workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
+        worksheet = workbook["Equipos"] if "Equipos" in workbook.sheetnames else workbook.active
+        values = worksheet.iter_rows(values_only=True)
+        headers = [str(value or "").strip() for value in next(values, [])]
+        return headers, list(values)
+
+    if extension == "csv":
+        wrapper = TextIOWrapper(uploaded_file.file, encoding="utf-8-sig", newline="")
+        reader = csv.reader(wrapper)
+        headers = [value.strip() for value in next(reader, [])]
+        return headers, list(reader)
+
+    raise ValueError("Formato no soportado.")
+
+
+@login_required
+def plantilla_equipos_excel(request):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Equipos"
+    catalogs = workbook.create_sheet("Catalogos")
+
+    for column, header in enumerate(EQUIPMENT_IMPORT_HEADERS, 1):
+        cell = worksheet.cell(row=1, column=column, value=header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="176B45")
+        cell.alignment = Alignment(horizontal="center")
+
+    example = [
+        "Laptop",
+        "Dell",
+        "Latitude 5440",
+        "SERIE-EJEMPLO-001",
+        "Intel Core i7",
+        "16 GB",
+        "512 GB SSD",
+        "Windows 11 Pro",
+        "00:1A:2B:3C:4D:5E",
+        "00:1A:2B:3C:4D:5F",
+        "2026-01-15",
+        "2029-01-15",
+        "Mesa TIC",
+        "Disponible",
+        "",
+        "Fila de ejemplo: eliminar antes de importar.",
+    ]
+    worksheet.append(example)
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = f"A1:P2"
+
+    widths = [20, 18, 20, 24, 22, 16, 20, 22, 20, 20, 16, 16, 24, 18, 28, 36]
+    for index, width in enumerate(widths, 1):
+        worksheet.column_dimensions[worksheet.cell(1, index).column_letter].width = width
+
+    catalog_data = {
+        "Tipos": list(TipoEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
+        "Marcas": list(MarcaEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
+        "Ubicaciones": list(Ubicacion.objects.filter(activa=True).values_list("nombre", flat=True)),
+        "Estados": [label for _, label in Equipo.Estado.choices],
+        "RAM": sorted(RAM_OPTIONS, key=lambda value: int(value.split()[0])),
+        "Almacenamiento": sorted(STORAGE_OPTIONS),
+    }
+    catalog_columns = {}
+    for column, (title, values) in enumerate(catalog_data.items(), 1):
+        catalogs.cell(row=1, column=column, value=title)
+        for row, value in enumerate(values, 2):
+            catalogs.cell(row=row, column=column, value=value)
+        catalog_columns[title] = (catalogs.cell(1, column).column_letter, max(2, len(values) + 1))
+
+    validations = {
+        "A": "Tipos",
+        "B": "Marcas",
+        "F": "RAM",
+        "G": "Almacenamiento",
+        "M": "Ubicaciones",
+        "N": "Estados",
+    }
+    for target_column, catalog_name in validations.items():
+        catalog_column, last_row = catalog_columns[catalog_name]
+        validation = DataValidation(
+            type="list",
+            formula1=f"'Catalogos'!${catalog_column}$2:${catalog_column}${last_row}",
+            allow_blank=target_column not in {"A", "M", "N"},
+        )
+        worksheet.add_data_validation(validation)
+        validation.add(f"{target_column}2:{target_column}1001")
+
+    catalogs.sheet_state = "hidden"
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return FileResponse(buffer, as_attachment=True, filename="Plantilla-importacion-SICI.xlsx")
+
+
+@login_required
+@require_POST
+def importar_equipos(request):
+    uploaded_file = request.FILES.get("archivo")
+    if not uploaded_file:
+        return JsonResponse({"error": "Selecciona un archivo Excel o CSV."}, status=400)
+    if uploaded_file.size > 10 * 1024 * 1024:
+        return JsonResponse({"error": "El archivo no debe superar 10 MB."}, status=400)
+
+    try:
+        headers, raw_rows = import_rows_from_file(uploaded_file)
+    except (ValueError, KeyError, OSError):
+        return JsonResponse({"error": "No fue posible leer el archivo. Usa la plantilla XLSX o un CSV UTF-8."}, status=400)
+
+    if headers != EQUIPMENT_IMPORT_HEADERS:
+        return JsonResponse({"error": "Las columnas no coinciden con la plantilla oficial de SICI."}, status=400)
+
+    rows = []
+    for row_number, values in enumerate(raw_rows, 2):
+        row = {header: values[index] if index < len(values) else "" for index, header in enumerate(headers)}
+        if any(str(value or "").strip() for value in row.values()):
+            rows.append((row_number, row))
+    if not rows:
+        return JsonResponse({"error": "El archivo no contiene equipos para importar."}, status=400)
+
+    types = {item.nombre.lower(): item for item in TipoEquipo.objects.filter(activo=True)}
+    brands = {item.nombre.lower(): item for item in MarcaEquipo.objects.filter(activo=True)}
+    locations_by_name = {item.nombre.lower(): item for item in Ubicacion.objects.filter(activa=True)}
+    state_map = {label.lower(): value for value, label in Equipo.Estado.choices}
+    responsable = current_responsable(request)
+    imported = []
+    seen_serials = set()
+
+    try:
+        with transaction.atomic():
+            for row_number, row in rows:
+                clean = {key: str(value or "").strip() for key, value in row.items()}
+                type_name = clean["tipo_equipo"]
+                serial = clean["numero_serie"]
+                location_name = clean["ubicacion"]
+                state_label = clean["estado"]
+                if not type_name or not serial or not location_name or not state_label:
+                    raise ValueError(f"Fila {row_number}: tipo_equipo, numero_serie, ubicacion y estado son obligatorios.")
+
+                serial_key = serial.lower()
+                if serial_key in seen_serials or Equipo.objects.filter(numero_serie__iexact=serial).exists():
+                    raise ValueError(f"Fila {row_number}: el numero de serie {serial} ya existe o esta repetido.")
+                seen_serials.add(serial_key)
+
+                equipment_type = types.get(type_name.lower())
+                if not equipment_type:
+                    raise ValueError(f"Fila {row_number}: el tipo de equipo '{type_name}' no esta registrado.")
+
+                brand = None
+                if clean["marca"]:
+                    brand = brands.get(clean["marca"].lower())
+                    if not brand:
+                        raise ValueError(f"Fila {row_number}: la marca '{clean['marca']}' no esta registrada.")
+
+                location = locations_by_name.get(location_name.lower())
+                if not location:
+                    raise ValueError(f"Fila {row_number}: la ubicacion '{location_name}' no esta registrada.")
+                if not has_full_inventory_access(request) and (
+                    not responsable or responsable.ubicacion_id != location.id
+                ):
+                    raise PermissionError(f"Fila {row_number}: no puedes importar equipos para {location.nombre}.")
+
+                state = state_map.get(state_label.lower())
+                if not state:
+                    raise ValueError(f"Fila {row_number}: el estado '{state_label}' no es valido.")
+                assigned_to = clean["asignado_a"]
+                if state == Equipo.Estado.ASIGNADO and not assigned_to:
+                    raise ValueError(f"Fila {row_number}: asignado_a es obligatorio para equipos asignados.")
+                if state in {Equipo.Estado.DISPONIBLE, Equipo.Estado.BAJA}:
+                    assigned_to = ""
+
+                ram = clean["memoria_ram"]
+                storage = clean["almacenamiento"]
+                if ram and ram not in RAM_OPTIONS:
+                    raise ValueError(f"Fila {row_number}: memoria RAM no valida.")
+                if storage and storage not in STORAGE_OPTIONS:
+                    raise ValueError(f"Fila {row_number}: almacenamiento no valido.")
+
+                try:
+                    purchase_date = excel_date(row["fecha_compra"])
+                    warranty_date = excel_date(row["garantia_hasta"])
+                except ValueError:
+                    raise ValueError(f"Fila {row_number}: usa fechas YYYY-MM-DD o DD/MM/YYYY.")
+
+                equipment = Equipo.objects.create(
+                    tipo=equipment_type.nombre,
+                    tipo_equipo=equipment_type,
+                    marca_equipo=brand,
+                    marca=brand.nombre if brand else "",
+                    modelo=clean["modelo"],
+                    numero_serie=serial,
+                    procesador=clean["procesador"],
+                    memoria_ram=ram,
+                    almacenamiento=storage,
+                    sistema_operativo=clean["sistema_operativo"],
+                    mac_ethernet=clean["mac_ethernet"],
+                    mac_wifi=clean["mac_wifi"],
+                    fecha_compra=purchase_date,
+                    garantia_hasta=warranty_date,
+                    estado=state,
+                    ubicacion=location,
+                    asignado_a=assigned_to,
+                    observaciones=clean["observaciones"],
+                )
+                movement_type = {
+                    Equipo.Estado.ASIGNADO: Movimiento.Tipo.ASIGNACION,
+                    Equipo.Estado.MANTENIMIENTO: Movimiento.Tipo.MANTENIMIENTO,
+                    Equipo.Estado.BAJA: Movimiento.Tipo.BAJA,
+                }.get(state, Movimiento.Tipo.ALTA)
+                Movimiento.objects.create(
+                    equipo=equipment,
+                    tipo=movement_type,
+                    descripcion=f"Alta mediante importacion de Excel con estado {state_label}.",
+                    **movement_actor_data(request, responsable),
+                    ubicacion=location,
+                    estado_equipo=state,
+                    asignado_a=assigned_to,
+                )
+                imported.append(equipment_payload(equipment))
+    except PermissionError as error:
+        return JsonResponse({"error": str(error)}, status=403)
+    except ValueError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+
+    return JsonResponse({"equipment": imported, "count": len(imported)}, status=201)
 
 
 def session_user_payload(request):

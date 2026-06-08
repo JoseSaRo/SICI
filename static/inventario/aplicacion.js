@@ -1927,14 +1927,38 @@ passwordChangeBtn?.addEventListener("click", async () => {
 
 cancelResponsibleEdit?.addEventListener("click", resetResponsibleForm);
 
-excelInput.addEventListener("change", (event) => {
+excelInput.addEventListener("change", async (event) => {
   const file = event.target.files[0];
   if (!file) return;
 
   const scopedLocation = selectedLocation();
   const fixedLocation = scopedLocation ? scopedLocation.name : "ubicaciones del archivo";
+  importStatus.textContent = `Importando ${file.name} para ${fixedLocation}...`;
+  const payload = new FormData();
+  payload.append("archivo", file);
 
-  importStatus.textContent = `Archivo seleccionado: ${file.name}. La carga se aplicara a ${fixedLocation}.`;
+  try {
+    const response = await fetch("/equipos/importar/", {
+      method: "POST",
+      headers: { "X-CSRFToken": csrfToken() },
+      body: payload
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      importStatus.textContent = data.error || "No se pudo importar el archivo.";
+      return;
+    }
+
+    equipment = [...equipment, ...data.equipment];
+    syncLocationEquipmentCounts();
+    renderLocations();
+    renderInventory();
+    importStatus.textContent = `${data.count} equipo${data.count === 1 ? "" : "s"} importado${data.count === 1 ? "" : "s"} correctamente.`;
+  } catch (error) {
+    importStatus.textContent = "Error de conexion al importar el archivo.";
+  } finally {
+    excelInput.value = "";
+  }
 });
 
 [roleSelect, frontFilter, statusFilter, searchInput].forEach((control) => {

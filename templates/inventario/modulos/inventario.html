@@ -5,7 +5,6 @@
               <h2>Inventario de equipos</h2>
             </div>
             <div class="filters">
-              <button class="ghost-btn" data-import-trigger>Importar Excel</button>
               <select id="frontFilter">
                 <option value="all">Todos los frentes y mesas</option>
               </select>
@@ -26,10 +25,10 @@
             </div>
             <div class="import-actions">
               <button class="primary-btn" data-import-trigger>Seleccionar archivo</button>
-              <button class="ghost-btn">Descargar plantilla</button>
-              <input id="excelInput" type="file" accept=".xlsx,.xls,.csv" />
+              <a class="ghost-btn" href="/equipos/plantilla-excel/">Descargar plantilla</a>
+              <input id="excelInput" type="file" accept=".xlsx,.csv" />
             </div>
-            <p class="import-status" id="importStatus">Formatos permitidos: .xlsx, .xls y .csv</p>
+            <p class="import-status" id="importStatus">Formatos permitidos: .xlsx y .csv</p>
           </div>
           <div class="table-wrap">
             <table>
