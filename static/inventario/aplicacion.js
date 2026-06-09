@@ -11,6 +11,7 @@
 
 let equipment = readJsonData("equipment-data", []);
 let locations = readJsonData("location-data", []);
+let physicalLocations = readJsonData("physical-location-data", []);
 let responsibles = readJsonData("responsible-data", []);
 let equipmentTypes = readJsonData("equipment-type-data", []);
 let equipmentBrands = readJsonData("equipment-brand-data", []);
@@ -47,6 +48,8 @@ const drawerBody = document.querySelector("#drawerBody");
 const sessionUserButton = document.querySelector("#sessionUserButton");
 const sessionUserMenu = document.querySelector("#sessionUserMenu");
 const assignmentFront = document.querySelector("#assignmentFront");
+const assignmentPhysicalLocation = document.querySelector("#assignmentPhysicalLocation");
+const physicalLocationOptions = document.querySelector("#physicalLocationOptions");
 const assignmentPerson = document.querySelector("#assignmentPerson");
 const assignmentPersonHint = document.querySelector("#assignmentPersonHint");
 const assignmentStatus = document.querySelector("#assignmentStatus");
@@ -76,6 +79,21 @@ const invoiceInput = document.querySelector("#invoiceInput");
 const excelInput = document.querySelector("#excelInput");
 const importStatus = document.querySelector("#importStatus");
 const frontBars = document.querySelector(".front-bars");
+const recentMovements = document.querySelector("#recentMovements");
+const reportType = document.querySelector("#reportType");
+const reportLocation = document.querySelector("#reportLocation");
+const reportPhysicalLocation = document.querySelector("#reportPhysicalLocation");
+const reportWarrantyDays = document.querySelector("#reportWarrantyDays");
+const reportWarrantyDaysField = document.querySelector("#reportWarrantyDaysField");
+const reportCount = document.querySelector("#reportCount");
+const reportAssigned = document.querySelector("#reportAssigned");
+const reportAvailable = document.querySelector("#reportAvailable");
+const reportMaintenance = document.querySelector("#reportMaintenance");
+const reportDown = document.querySelector("#reportDown");
+const reportRows = document.querySelector("#reportRows");
+const reportLastColumn = document.querySelector("#reportLastColumn");
+const reportNote = document.querySelector("#reportNote");
+const downloadReport = document.querySelector("#downloadReport");
 const responsibleCards = document.querySelector("#responsibleCards");
 const locationCards = document.querySelector("#locationCards");
 const toggleResponsibleForm = document.querySelector("#toggleResponsibleForm");
@@ -242,6 +260,22 @@ function locationOptionListById(selectedId = "") {
     .join("");
 }
 
+function physicalLocationsFor(locationId) {
+  return physicalLocations.filter((item) => item.locationId === Number(locationId) && item.active);
+}
+
+function renderPhysicalLocationOptions(locationId, input = assignmentPhysicalLocation, datalist = physicalLocationOptions) {
+  if (!input || !datalist) return;
+  const options = physicalLocationsFor(locationId);
+  datalist.innerHTML = options
+    .map((item) => `<option value="${escapeHtml(item.name)}"></option>`)
+    .join("");
+
+  if (!input.value.trim() || !options.some((item) => item.name.toLowerCase() === input.value.trim().toLowerCase())) {
+    input.value = options.find((item) => item.name.toLowerCase() === "santa lucía")?.name || "Santa Lucía";
+  }
+}
+
 function statusOptionList(selectedValue = "") {
   return equipmentStatuses
     .map((status) => `<option ${selectedValue === status ? "selected" : ""}>${status}</option>`)
@@ -302,6 +336,7 @@ function resetEquipmentForm() {
   }
   delete assignmentFront.dataset.ticDefaultApplied;
   applyRole();
+  renderPhysicalLocationOptions(assignmentFront.value);
   syncAssignmentPersonRequirement();
 }
 
@@ -317,7 +352,7 @@ function disableBrowserAutocomplete() {
 function populateLocationControls() {
   const names = locationNames();
   frontFilter.innerHTML = [
-    `<option value="all">Todos los frentes y mesas</option>`,
+    `<option value="all">Todos los F.F.O.O. y Mesas</option>`,
     ...names.map((name) => `<option value="${name}">${name}</option>`)
   ].join("");
 
@@ -332,7 +367,16 @@ function populateLocationControls() {
     ].join("");
   }
 
+  if (reportLocation) {
+    reportLocation.innerHTML = [
+      `<option value="">Todos los F.F.O.O. y Mesas</option>`,
+      ...locations.map((location) => `<option value="${location.id}">${escapeHtml(location.name)}</option>`)
+    ].join("");
+  }
+
   populateRoleSelector();
+  renderPhysicalLocationOptions(assignmentFront.value);
+  populateReportPhysicalLocations();
 }
 
 function populateEquipmentTypes() {
@@ -527,6 +571,165 @@ function renderMetrics(items) {
   document.querySelector("#metricDown").textContent = items.filter((item) => item.status === "Dado de baja").length;
 }
 
+function populateReportPhysicalLocations() {
+  if (!reportPhysicalLocation) return;
+  const locationId = Number(reportLocation?.value || 0);
+  const options = physicalLocations.filter(
+    (item) => item.active && (!locationId || item.locationId === locationId)
+  );
+  const currentValue = reportPhysicalLocation.value;
+  reportPhysicalLocation.innerHTML = [
+    `<option value="">Todas las ubicaciones fisicas</option>`,
+    ...options.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`)
+  ].join("");
+  if (options.some((item) => String(item.id) === currentValue)) {
+    reportPhysicalLocation.value = currentValue;
+  }
+}
+
+function dateFromDisplay(value) {
+  const match = String(value || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  return new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+}
+
+function reportEquipmentItems() {
+  const scopedLocation = selectedLocation();
+  const locationId = Number(reportLocation?.value || 0);
+  const physicalLocationId = Number(reportPhysicalLocation?.value || 0);
+  const type = reportType?.value || "inventario";
+  const warrantyLimit = new Date();
+  warrantyLimit.setHours(23, 59, 59, 999);
+  warrantyLimit.setDate(warrantyLimit.getDate() + Number(reportWarrantyDays?.value || 90));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return equipment.filter((item) => {
+    if (scopedLocation && item.locationId !== scopedLocation.id) return false;
+    if (locationId && item.locationId !== locationId) return false;
+    if (physicalLocationId && item.physicalLocationId !== physicalLocationId) return false;
+    if (type === "mantenimiento" && item.status !== "Mantenimiento") return false;
+    if (type === "bajas" && item.status !== "Dado de baja") return false;
+    if (type === "garantias") {
+      const warrantyDate = dateFromDisplay(item.warranty);
+      return warrantyDate && warrantyDate >= today && warrantyDate <= warrantyLimit;
+    }
+    return true;
+  });
+}
+
+function renderReports() {
+  if (!reportRows) return;
+  const items = reportEquipmentItems();
+  const type = reportType.value;
+  const isMovementReport = type === "movimientos";
+  const movements = isMovementReport
+    ? items
+        .flatMap((item) =>
+          (item.history || []).map((movement) => ({
+            ...movement,
+            equipmentName: item.name,
+            serial: item.serial,
+            front: item.front,
+            physicalLocation: movement.physicalLocation || item.physicalLocation
+          }))
+        )
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+    : [];
+
+  reportWarrantyDaysField.hidden = type !== "garantias";
+  reportLastColumn.textContent = isMovementReport ? "Movimiento" : "Garantia";
+  reportCount.textContent = isMovementReport ? movements.length : items.length;
+  reportAssigned.textContent = items.filter((item) => item.status === "Asignado").length;
+  reportAvailable.textContent = items.filter((item) => item.status === "Disponible").length;
+  reportMaintenance.textContent = items.filter((item) => item.status === "Mantenimiento").length;
+  reportDown.textContent = items.filter((item) => item.status === "Dado de baja").length;
+
+  const rowsToRender = isMovementReport ? movements.slice(0, 100) : items.slice(0, 100);
+  reportRows.innerHTML = rowsToRender.length
+    ? rowsToRender
+        .map((item) =>
+          isMovementReport
+            ? `
+              <tr>
+                <td data-label="Equipo">${escapeHtml(item.equipmentName)}</td>
+                <td data-label="Serie">${escapeHtml(item.serial)}</td>
+                <td data-label="F.F.O.O. o Mesa">${escapeHtml(item.location || item.front)}</td>
+                <td data-label="Ubicacion fisica">${escapeHtml(item.physicalLocation || "Sin registro")}</td>
+                <td data-label="Estado">${escapeHtml(item.status)}</td>
+                <td data-label="Realizado por">${escapeHtml(item.performedBy)}</td>
+                <td data-label="Movimiento"><strong>${escapeHtml(item.type)}</strong><br><span>${escapeHtml(item.date)}</span></td>
+              </tr>
+            `
+            : `
+              <tr>
+                <td data-label="Equipo">${escapeHtml(item.name)}</td>
+                <td data-label="Serie">${escapeHtml(item.serial)}</td>
+                <td data-label="F.F.O.O. o Mesa">${escapeHtml(item.front)}</td>
+                <td data-label="Ubicacion fisica">${escapeHtml(item.physicalLocation || "Sin registro")}</td>
+                <td data-label="Estado"><span class="status ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
+                <td data-label="Asignado a">${escapeHtml(item.user)}</td>
+                <td data-label="Garantia">${escapeHtml(item.warranty)}</td>
+              </tr>
+            `
+        )
+        .join("")
+    : `<tr><td colspan="7">No hay registros para los filtros seleccionados.</td></tr>`;
+
+  const totalRows = isMovementReport ? movements.length : items.length;
+  reportNote.textContent =
+    totalRows > 100
+      ? `Vista previa de 100 de ${totalRows} registros. El Excel incluye todos los resultados permitidos.`
+      : "La descarga respeta el alcance asignado a tu usuario.";
+}
+
+function renderRecentMovements() {
+  if (!recentMovements) return;
+
+  const scopedLocation = selectedLocation();
+  const movements = equipment
+    .filter((item) => !scopedLocation || item.locationId === scopedLocation.id)
+    .flatMap((item) =>
+      (item.history || []).map((movement) => ({
+        ...movement,
+        equipmentName: item.name,
+        serial: item.serial
+      }))
+    )
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+    .slice(0, 6);
+
+  if (!movements.length) {
+    recentMovements.innerHTML = `
+      <div class="timeline-item">
+        <span class="dot ok"></span>
+        <div>
+          <strong>Sin movimientos recientes</strong>
+          <p>Cuando registres altas, asignaciones o bajas apareceran aqui.</p>
+        </div>
+        <time>Ahora</time>
+      </div>
+    `;
+    return;
+  }
+
+  recentMovements.innerHTML = movements
+    .map((movement) => {
+      const dotClass = movement.type === "Mantenimiento" ? "warn" : movement.type === "Baja" ? "" : "ok";
+      return `
+        <button class="timeline-item timeline-action" type="button" data-recent-equipment="${escapeHtml(movement.serial)}">
+          <span class="dot ${dotClass}"></span>
+          <span>
+            <strong>${escapeHtml(movement.type)}: ${escapeHtml(movement.equipmentName)}</strong>
+            <p>${escapeHtml(movement.description)} · ${escapeHtml(movement.location)} / ${escapeHtml(movement.physicalLocation || "Sin registro")} · Por: ${escapeHtml(movement.performedBy)}</p>
+          </span>
+          <time>${escapeHtml(movement.date)}</time>
+        </button>
+      `;
+    })
+    .join("");
+}
+
 function visibleEquipment() {
   const scopedLocation = selectedLocation();
   const frontValue = frontFilter.value;
@@ -561,7 +764,7 @@ function renderInventory() {
           </td>
           <td data-label="Serie">${item.serial}</td>
           <td data-label="Asignado a">${item.user}</td>
-          <td data-label="Frente o mesa">${item.front}</td>
+          <td data-label="F.F.O.O. o Mesa">${item.front}</td>
           <td data-label="Estado"><span class="status ${item.status}">${item.status}</span></td>
           <td data-label="Garantia">${item.warranty}</td>
           <td data-label="QR"><button class="qr-chip" data-qr="${index}">QR</button></td>
@@ -584,6 +787,8 @@ function renderInventory() {
   }
 
   renderMetrics(items);
+  renderRecentMovements();
+  renderReports();
 }
 
 function openDetail(item) {
@@ -592,7 +797,7 @@ function openDetail(item) {
         <div>
           <span>${escapeHtml(movement.date)} - ${escapeHtml(movement.type)}</span>
           <strong>${escapeHtml(movement.description)}</strong>
-          <small>${escapeHtml(movement.location)} - ${escapeHtml(movement.status)} - ${escapeHtml(movement.assignedTo)} - Por: ${escapeHtml(movement.performedBy || "Sin registro")}</small>
+          <small>${escapeHtml(movement.location)} / ${escapeHtml(movement.physicalLocation || "Sin registro")} - ${escapeHtml(movement.status)} - ${escapeHtml(movement.assignedTo)} - Por: ${escapeHtml(movement.performedBy || "Sin registro")}</small>
         </div>
       `).join("")
     : `<p class="empty-state">Sin movimientos registrados.</p>`;
@@ -611,7 +816,8 @@ function openDetail(item) {
       <div><span>Tipo</span><strong>${item.type}</strong></div>
       <div><span>Numero de serie</span><strong>${item.serial}</strong></div>
       <div><span>Asignado a</span><strong>${item.user}</strong></div>
-      <div><span>Frente o mesa</span><strong>${item.front}</strong></div>
+      <div><span>F.F.O.O. o Mesa</span><strong>${item.front}</strong></div>
+      <div><span>Ubicacion fisica</span><strong>${item.physicalLocation || "Santa Lucía"}</strong></div>
       <div><span>Estado</span><strong>${item.status}</strong></div>
       <div><span>Procesador</span><strong>${item.cpu}</strong></div>
       <div><span>RAM</span><strong>${item.ram}</strong></div>
@@ -679,15 +885,22 @@ function equipmentStatusBlock(item) {
   const scopedLocation = selectedLocation();
   const lockedLocationId = scopedLocation ? scopedLocation.id : item.locationId;
   const assignedValue = item.user === "Sin asignar" ? "" : item.user;
+  const physicalOptions = physicalLocationsFor(lockedLocationId);
 
   return `
     <div class="drawer-assignment" data-equipment-status-form="${escapeHtml(item.serial)}">
       <span class="eyebrow">Estado del equipo</span>
       <label>Asignado a<input name="asignado_a" type="text" value="${escapeHtml(assignedValue)}" placeholder="Nombre de la persona" /></label>
-      <label>Frente o mesa
+      <label>F.F.O.O. o Mesa
         <select name="ubicacion" ${scopedLocation ? "disabled" : ""}>
           ${locationOptionListById(lockedLocationId)}
         </select>
+      </label>
+      <label>Ubicacion fisica
+        <input name="ubicacion_fisica" type="text" value="${escapeHtml(item.physicalLocation || "Santa Lucía")}" list="drawerPhysicalLocationOptions" required />
+        <datalist id="drawerPhysicalLocationOptions">
+          ${physicalOptions.map((location) => `<option value="${escapeHtml(location.name)}"></option>`).join("")}
+        </datalist>
       </label>
       <label>Estado<select name="estado">${statusOptionList(item.status)}</select></label>
       <label data-status-reason class="${item.status === "Mantenimiento" ? "" : "hidden-by-role"}">
@@ -707,10 +920,22 @@ function syncLocationEquipmentCounts() {
 }
 
 function replaceEquipment(updatedEquipment) {
+  rememberPhysicalLocation(updatedEquipment);
   equipment = equipment.map((item) => item.serial === updatedEquipment.serial ? updatedEquipment : item);
   syncLocationEquipmentCounts();
   renderLocations();
   renderInventory();
+}
+
+function rememberPhysicalLocation(item) {
+  if (!item.physicalLocationId || !item.physicalLocation) return;
+  if (physicalLocations.some((location) => location.id === item.physicalLocationId)) return;
+  physicalLocations.push({
+    id: item.physicalLocationId,
+    locationId: item.locationId,
+    name: item.physicalLocation,
+    active: true
+  });
 }
 
 async function saveEquipmentStatus(serial) {
@@ -730,6 +955,7 @@ async function saveEquipmentStatus(serial) {
   payload.append("estado", selectedStatus);
   payload.append("asignado_a", form.querySelector("[name='asignado_a']").value.trim());
   payload.append("ubicacion", form.querySelector("[name='ubicacion']").value);
+  payload.append("ubicacion_fisica", form.querySelector("[name='ubicacion_fisica']").value.trim());
   payload.append("motivo", reason);
   statusMessage.textContent = "Guardando estado...";
 
@@ -1245,6 +1471,14 @@ function applyRole() {
 
   frontFilter.disabled = Boolean(scopedLocation);
   assignmentFront.disabled = Boolean(scopedLocation);
+  if (reportLocation) {
+    reportLocation.disabled = Boolean(scopedLocation);
+    if (scopedLocation) {
+      reportLocation.value = String(scopedLocation.id);
+    }
+    populateReportPhysicalLocations();
+  }
+  renderPhysicalLocationOptions(assignmentFront.value);
 
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("hidden-by-role", !allowedViews.includes(item.dataset.view));
@@ -1276,6 +1510,32 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 
 document.querySelectorAll("[data-view-target]").forEach((button) => {
   button.addEventListener("click", () => switchView(button.dataset.viewTarget));
+});
+
+[reportType, reportPhysicalLocation, reportWarrantyDays].forEach((control) => {
+  control?.addEventListener("change", renderReports);
+});
+
+reportLocation?.addEventListener("change", () => {
+  populateReportPhysicalLocations();
+  renderReports();
+});
+
+downloadReport?.addEventListener("click", () => {
+  const params = new URLSearchParams({ tipo: reportType.value });
+  if (reportLocation.value) params.set("ubicacion", reportLocation.value);
+  if (reportPhysicalLocation.value) params.set("ubicacion_fisica", reportPhysicalLocation.value);
+  if (reportType.value === "garantias") params.set("dias", reportWarrantyDays.value);
+  window.location.href = `/reportes/descargar/?${params.toString()}`;
+});
+
+recentMovements?.addEventListener("click", (event) => {
+  const movementButton = event.target.closest("[data-recent-equipment]");
+  if (!movementButton) return;
+  const item = equipment.find((equipmentItem) => equipmentItem.serial === movementButton.dataset.recentEquipment);
+  if (item) {
+    openDetail(item);
+  }
 });
 
 rows.addEventListener("click", (event) => {
@@ -1336,6 +1596,15 @@ drawerBody.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.matches("[data-equipment-status-form] [name='ubicacion']")) {
+    const form = event.target.closest("[data-equipment-status-form]");
+    const input = form.querySelector("[name='ubicacion_fisica']");
+    const datalist = form.querySelector("datalist");
+    input.value = "";
+    renderPhysicalLocationOptions(event.target.value, input, datalist);
+    return;
+  }
+
   if (event.target.matches("[data-safekeeping-upload]")) {
     uploadSignedSafekeeping(event.target.dataset.safekeepingUpload, event.target.files[0]);
   }
@@ -1387,6 +1656,10 @@ locationType?.addEventListener("change", () => {
 
 responsibleRole?.addEventListener("change", syncResponsibleLocationControl);
 assignmentStatus?.addEventListener("change", syncAssignmentPersonRequirement);
+assignmentFront?.addEventListener("change", () => {
+  assignmentPhysicalLocation.value = "";
+  renderPhysicalLocationOptions(assignmentFront.value);
+});
 
 function showLocationForm() {
   toggleLocationForm.checked = true;
@@ -1430,6 +1703,12 @@ function resetResponsibleForm() {
   passwordChangeBtn.classList.add("form-collapsed");
   cancelResponsibleEdit.classList.add("form-collapsed");
   responsibleFormStatus.textContent = "";
+}
+
+function cancelResponsibleEditing() {
+  resetResponsibleForm();
+  toggleResponsibleForm.checked = false;
+  responsibleFormPanel.classList.add("form-collapsed");
 }
 
 function showResponsibleForm() {
@@ -1723,6 +2002,7 @@ equipmentForm?.addEventListener("submit", async (event) => {
       return;
     }
 
+    rememberPhysicalLocation(data.equipment);
     equipment = [...equipment, data.equipment];
     const location = locations.find((item) => item.name === data.equipment.front);
     if (location) {
@@ -1769,6 +2049,9 @@ locationForm?.addEventListener("submit", async (event) => {
       locations = locations.map((item) => (item.id === data.location.id ? data.location : item));
     } else {
       locations = [...locations, data.location];
+      if (data.physicalLocation) {
+        physicalLocations.push(data.physicalLocation);
+      }
     }
     locations = locations.sort((a, b) => a.name.localeCompare(b.name));
     populateLocationControls();
@@ -1925,7 +2208,7 @@ passwordChangeBtn?.addEventListener("click", async () => {
   }
 });
 
-cancelResponsibleEdit?.addEventListener("click", resetResponsibleForm);
+cancelResponsibleEdit?.addEventListener("click", cancelResponsibleEditing);
 
 excelInput.addEventListener("change", async (event) => {
   const file = event.target.files[0];
@@ -1949,6 +2232,7 @@ excelInput.addEventListener("change", async (event) => {
       return;
     }
 
+    data.equipment.forEach(rememberPhysicalLocation);
     equipment = [...equipment, ...data.equipment];
     syncLocationEquipmentCounts();
     renderLocations();

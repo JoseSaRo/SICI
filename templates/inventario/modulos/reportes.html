@@ -1,15 +1,85 @@
-﻿<section class="view" id="reports">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">Exportacion</span>
-              <h2>Reportes de inventario</h2>
-            </div>
-          </div>
-          <div class="report-grid">
-            <button>Inventario completo</button>
-            <button>Equipos por frente o mesa</button>
-            <button>Garantias por vencer</button>
-            <button>Equipos en mantenimiento</button>
-            <button>Equipos dados de baja</button>
-          </div>
-        </section>
+<section class="view" id="reports">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Consulta y exportacion</span>
+      <h2>Reportes de inventario</h2>
+    </div>
+    <button class="primary-btn" type="button" id="downloadReport">Descargar Excel</button>
+  </div>
+
+  <div class="report-toolbar">
+    <label>
+      Reporte
+      <select id="reportType">
+        <option value="inventario">Inventario general</option>
+        <option value="garantias">Garantias por vencer</option>
+        <option value="mantenimiento">Equipos en mantenimiento</option>
+        <option value="bajas">Equipos dados de baja</option>
+        <option value="movimientos">Historial de movimientos</option>
+      </select>
+    </label>
+    <label>
+      F.F.O.O. o Mesa
+      <select id="reportLocation">
+        <option value="">Todos los F.F.O.O. y Mesas</option>
+      </select>
+    </label>
+    <label>
+      Ubicacion fisica
+      <select id="reportPhysicalLocation">
+        <option value="">Todas las ubicaciones fisicas</option>
+      </select>
+    </label>
+    <label id="reportWarrantyDaysField">
+      Vencen en
+      <select id="reportWarrantyDays">
+        <option value="30">30 dias</option>
+        <option value="60">60 dias</option>
+        <option value="90" selected>90 dias</option>
+        <option value="180">180 dias</option>
+        <option value="365">1 ano</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="report-summary">
+    <div>
+      <span>Registros</span>
+      <strong id="reportCount">0</strong>
+    </div>
+    <div>
+      <span>Asignados</span>
+      <strong id="reportAssigned">0</strong>
+    </div>
+    <div>
+      <span>Disponibles</span>
+      <strong id="reportAvailable">0</strong>
+    </div>
+    <div>
+      <span>Mantenimiento</span>
+      <strong id="reportMaintenance">0</strong>
+    </div>
+    <div>
+      <span>Bajas</span>
+      <strong id="reportDown">0</strong>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Equipo</th>
+          <th>Serie</th>
+          <th>F.F.O.O. o Mesa</th>
+          <th>Ubicacion fisica</th>
+          <th>Estado</th>
+          <th>Asignado a</th>
+          <th id="reportLastColumn">Garantia</th>
+        </tr>
+      </thead>
+      <tbody id="reportRows"></tbody>
+    </table>
+  </div>
+  <p class="report-note" id="reportNote">La descarga respeta el alcance asignado a tu usuario.</p>
+</section>

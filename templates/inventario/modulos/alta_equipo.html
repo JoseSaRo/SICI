@@ -106,7 +106,12 @@
               <span class="eyebrow">Asignacion</span>
               <h2>Asignacion y ubicacion</h2>
               <label>Asignado a<input id="assignmentPerson" name="asignado_a" form="equipmentForm" type="text" placeholder="Nombre de la persona" autocomplete="off" /><small id="assignmentPersonHint">Obligatorio cuando el estado es Asignado.</small></label>
-              <label>Frente o mesa<select id="assignmentFront" name="ubicacion" form="equipmentForm" required><option>Sin ubicaciones registradas</option></select></label>
+              <label>F.F.O.O. o Mesa<select id="assignmentFront" name="ubicacion" form="equipmentForm" required><option>Sin ubicaciones registradas</option></select></label>
+              <label>Ubicacion fisica
+                <input id="assignmentPhysicalLocation" name="ubicacion_fisica" form="equipmentForm" type="text" value="Santa Luc&#237;a" list="physicalLocationOptions" autocomplete="off" required />
+                <datalist id="physicalLocationOptions"></datalist>
+                <small>Selecciona una existente o escribe una nueva.</small>
+              </label>
               <label>Estado<select id="assignmentStatus" name="estado" form="equipmentForm"><option>Asignado</option><option>Disponible</option><option>Mantenimiento</option><option>Dado de baja</option></select></label>
               <label>Factura<input id="invoiceInput" name="factura" form="equipmentForm" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" /><small>Opcional. PDF o imagen.</small></label>
               <button class="primary-btn full" form="equipmentForm" type="submit">Guardar registro</button>

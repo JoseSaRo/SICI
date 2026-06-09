@@ -1,6 +1,7 @@
 ﻿{% load static %}
 {{ equipment_data|json_script:"equipment-data" }}
     {{ location_data|json_script:"location-data" }}
+    {{ physical_location_data|json_script:"physical-location-data" }}
     {{ responsible_data|json_script:"responsible-data" }}
     {{ equipment_type_data|json_script:"equipment-type-data" }}
     {{ equipment_brand_data|json_script:"equipment-brand-data" }}
@@ -11,4 +12,4 @@
       window.SICI_CAN_MANAGE_EQUIPMENT_TYPES = {{ can_manage_equipment_types|yesno:"true,false" }};
     </script>
     <script src="{% static 'inventario/proveedores/jsQR.min.js' %}"></script>
-    <script src="{% static 'inventario/aplicacion.js' %}?v=20260608-1"></script>
+    <script src="{% static 'inventario/aplicacion.js' %}?v=20260608-5"></script>

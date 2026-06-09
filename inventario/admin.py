@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Equipo, EquipoEliminado, MarcaEquipo, Movimiento, RegistroAcceso, ResguardoEquipo, Responsable, SolicitudMarcaEquipo, SolicitudTipoEquipo, TipoEquipo, Ubicacion
+from .models import Equipo, EquipoEliminado, MarcaEquipo, Movimiento, RegistroAcceso, ResguardoEquipo, Responsable, SolicitudMarcaEquipo, SolicitudTipoEquipo, TipoEquipo, Ubicacion, UbicacionFisica
 
 
 @admin.register(Ubicacion)
@@ -8,6 +8,13 @@ class UbicacionAdmin(admin.ModelAdmin):
     list_display = ("nombre", "tipo", "responsable_nombre", "responsable_cargo", "activa")
     list_filter = ("tipo", "activa")
     search_fields = ("nombre", "responsable_nombre")
+
+
+@admin.register(UbicacionFisica)
+class UbicacionFisicaAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "ubicacion", "activa", "creado")
+    list_filter = ("activa", "ubicacion")
+    search_fields = ("nombre", "ubicacion__nombre")
 
 
 @admin.register(Responsable)
@@ -47,15 +54,15 @@ class SolicitudMarcaEquipoAdmin(admin.ModelAdmin):
 
 @admin.register(Equipo)
 class EquipoAdmin(admin.ModelAdmin):
-    list_display = ("tipo_equipo", "marca_equipo", "modelo", "numero_serie", "estado", "ubicacion", "asignado_a", "factura")
-    list_filter = ("estado", "tipo_equipo", "marca_equipo", "ubicacion")
-    search_fields = ("tipo", "tipo_equipo__nombre", "marca", "marca_equipo__nombre", "modelo", "numero_serie", "asignado_a")
+    list_display = ("tipo_equipo", "marca_equipo", "modelo", "numero_serie", "estado", "ubicacion", "ubicacion_fisica", "asignado_a", "factura")
+    list_filter = ("estado", "tipo_equipo", "marca_equipo", "ubicacion", "ubicacion_fisica")
+    search_fields = ("tipo", "tipo_equipo__nombre", "marca", "marca_equipo__nombre", "modelo", "numero_serie", "asignado_a", "ubicacion_fisica__nombre")
 
 
 @admin.register(Movimiento)
 class MovimientoAdmin(admin.ModelAdmin):
-    list_display = ("equipo", "tipo", "estado_equipo", "ubicacion", "realizado_por_nombre", "direccion_ip", "creado")
-    list_filter = ("tipo", "estado_equipo", "ubicacion", "creado")
+    list_display = ("equipo", "tipo", "estado_equipo", "ubicacion", "ubicacion_fisica", "realizado_por_nombre", "direccion_ip", "creado")
+    list_filter = ("tipo", "estado_equipo", "ubicacion", "ubicacion_fisica", "creado")
     search_fields = ("equipo__numero_serie", "descripcion", "realizado_por_nombre", "direccion_ip")
 
 
@@ -90,8 +97,8 @@ class RegistroAccesoAdmin(admin.ModelAdmin):
 
 @admin.register(ResguardoEquipo)
 class ResguardoEquipoAdmin(admin.ModelAdmin):
-    list_display = ("equipo", "asignado_a", "ubicacion_nombre", "activo", "generado_por_nombre", "generado", "reemplazado", "cargado")
-    list_filter = ("activo", "ubicacion_nombre", "fecha_asignacion", "generado", "reemplazado", "cargado")
+    list_display = ("equipo", "asignado_a", "ubicacion_nombre", "ubicacion_fisica_nombre", "activo", "generado_por_nombre", "generado", "reemplazado", "cargado")
+    list_filter = ("activo", "ubicacion_nombre", "ubicacion_fisica_nombre", "fecha_asignacion", "generado", "reemplazado", "cargado")
     search_fields = (
         "equipo__numero_serie",
         "asignado_a",
@@ -103,6 +110,7 @@ class ResguardoEquipoAdmin(admin.ModelAdmin):
         "equipo",
         "asignado_a",
         "ubicacion_nombre",
+        "ubicacion_fisica_nombre",
         "fecha_asignacion",
         "generado_por",
         "generado_por_nombre",

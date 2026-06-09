@@ -1,5 +1,5 @@
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 from io import TextIOWrapper
 from urllib.parse import quote, urlencode
@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .models import Equipo, EquipoEliminado, MarcaEquipo, Movimiento, ResguardoEquipo, Responsable, SolicitudMarcaEquipo, SolicitudTipoEquipo, TipoEquipo, Ubicacion
+from .models import Equipo, EquipoEliminado, MarcaEquipo, Movimiento, ResguardoEquipo, Responsable, SolicitudMarcaEquipo, SolicitudTipoEquipo, TipoEquipo, Ubicacion, UbicacionFisica
 
 
 User = get_user_model()
@@ -72,7 +72,8 @@ EQUIPMENT_IMPORT_HEADERS = [
     "mac_wifi",
     "fecha_compra",
     "garantia_hasta",
-    "ubicacion",
+    "ffoo_o_mesa",
+    "ubicacion_fisica",
     "estado",
     "asignado_a",
     "observaciones",
@@ -92,6 +93,8 @@ def equipment_payload(equipo):
         "user": equipo.asignado_a or "Sin asignar",
         "front": equipo.ubicacion.nombre,
         "locationId": equipo.ubicacion_id,
+        "physicalLocation": equipo.ubicacion_fisica.nombre if equipo.ubicacion_fisica else "Santa Lucía",
+        "physicalLocationId": equipo.ubicacion_fisica_id,
         "status": equipo.get_estado_display(),
         "warranty": format_date(equipo.garantia_hasta),
         "cpu": equipo.procesador or "No aplica",
@@ -108,14 +111,17 @@ def equipment_payload(equipo):
 
 
 def movement_payload(movimiento):
+    created_at = timezone.localtime(movimiento.creado)
     return {
         "type": movimiento.get_tipo_display(),
         "description": movimiento.descripcion,
         "status": movimiento.get_estado_equipo_display() if movimiento.estado_equipo else "Sin estado",
         "location": movimiento.ubicacion.nombre if movimiento.ubicacion else "Sin ubicacion",
+        "physicalLocation": movimiento.ubicacion_fisica.nombre if movimiento.ubicacion_fisica else "Sin registro",
         "assignedTo": movimiento.asignado_a or "Sin asignar",
         "performedBy": movimiento.realizado_por_nombre or (movimiento.realizado_por.nombre if movimiento.realizado_por else "Sin registro"),
-        "date": movimiento.creado.strftime("%d/%m/%Y %H:%M"),
+        "date": created_at.strftime("%d/%m/%Y %H:%M"),
+        "createdAt": created_at.isoformat(),
     }
 
 
@@ -124,6 +130,7 @@ def safekeeping_payload(resguardo):
         "id": resguardo.id,
         "assignedTo": resguardo.asignado_a,
         "location": resguardo.ubicacion_nombre,
+        "physicalLocation": resguardo.ubicacion_fisica_nombre or "Sin registro",
         "assignmentDate": resguardo.fecha_asignacion.strftime("%d/%m/%Y"),
         "generatedAt": timezone.localtime(resguardo.generado).strftime("%d/%m/%Y %H:%M"),
         "generatedBy": resguardo.generado_por_nombre or "Sin registro",
@@ -145,6 +152,29 @@ def location_payload(ubicacion):
         "equipmentCount": equipment_count,
         "active": ubicacion.activa,
     }
+
+
+def physical_location_payload(ubicacion_fisica):
+    return {
+        "id": ubicacion_fisica.id,
+        "locationId": ubicacion_fisica.ubicacion_id,
+        "name": ubicacion_fisica.nombre,
+        "active": ubicacion_fisica.activa,
+    }
+
+
+def get_or_create_physical_location(ubicacion, name):
+    normalized_name = (name or "Santa Lucía").strip() or "Santa Lucía"
+    existing = UbicacionFisica.objects.filter(
+        ubicacion=ubicacion,
+        nombre__iexact=normalized_name,
+    ).first()
+    if existing:
+        if not existing.activa:
+            existing.activa = True
+            existing.save(update_fields=["activa"])
+        return existing
+    return UbicacionFisica.objects.create(ubicacion=ubicacion, nombre=normalized_name)
 
 
 def responsible_payload(responsable):
@@ -230,6 +260,65 @@ def can_manage_equipment(request, equipo):
     return bool(responsable and responsable.ubicacion_id == equipo.ubicacion_id)
 
 
+def report_equipment_queryset(request):
+    queryset = Equipo.objects.select_related(
+        "tipo_equipo",
+        "marca_equipo",
+        "ubicacion",
+        "ubicacion_fisica",
+    )
+    if has_full_inventory_access(request):
+        return queryset
+
+    responsable = current_responsable(request)
+    if not responsable or not responsable.ubicacion_id:
+        return queryset.none()
+    return queryset.filter(ubicacion_id=responsable.ubicacion_id)
+
+
+def apply_report_location_filters(request, queryset):
+    location_id = request.GET.get("ubicacion", "").strip()
+    physical_location_id = request.GET.get("ubicacion_fisica", "").strip()
+
+    if not has_full_inventory_access(request):
+        responsable = current_responsable(request)
+        location_id = str(responsable.ubicacion_id) if responsable and responsable.ubicacion_id else ""
+
+    if location_id:
+        queryset = queryset.filter(ubicacion_id=location_id)
+    if physical_location_id:
+        queryset = queryset.filter(ubicacion_fisica_id=physical_location_id)
+    return queryset
+
+
+def style_report_worksheet(worksheet, widths):
+    header_fill = PatternFill("solid", fgColor="166534")
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = worksheet.dimensions
+    for index, width in enumerate(widths, 1):
+        worksheet.column_dimensions[worksheet.cell(1, index).column_letter].width = width
+    for row in worksheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+
+def report_workbook_response(workbook, report_name):
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    date_suffix = timezone.localdate().strftime("%Y%m%d")
+    return FileResponse(
+        output,
+        as_attachment=True,
+        filename=f"SICI-{report_name}-{date_suffix}.xlsx",
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 def parse_date_field(value):
     value = (value or "").strip()
     if not value:
@@ -289,6 +378,18 @@ def import_rows_from_file(uploaded_file):
 
 @login_required
 def plantilla_equipos_excel(request):
+    responsable = current_responsable(request)
+    scoped_location = None if has_full_inventory_access(request) else responsable.ubicacion if responsable else None
+    available_locations = (
+        [scoped_location]
+        if scoped_location
+        else list(Ubicacion.objects.filter(activa=True).order_by("nombre"))
+    )
+    example_location = scoped_location or next(
+        (location for location in available_locations if location.nombre.strip().lower() in {"tic", "mesa tic"}),
+        available_locations[0] if available_locations else None,
+    )
+
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = "Equipos"
@@ -313,23 +414,32 @@ def plantilla_equipos_excel(request):
         "00:1A:2B:3C:4D:5F",
         "2026-01-15",
         "2029-01-15",
-        "Mesa TIC",
+        example_location.nombre if example_location else "F.F.O.O. o Mesa",
+        "Santa Lucía",
         "Disponible",
         "",
         "Fila de ejemplo: eliminar antes de importar.",
     ]
     worksheet.append(example)
     worksheet.freeze_panes = "A2"
-    worksheet.auto_filter.ref = f"A1:P2"
+    worksheet.auto_filter.ref = f"A1:Q2"
 
-    widths = [20, 18, 20, 24, 22, 16, 20, 22, 20, 20, 16, 16, 24, 18, 28, 36]
+    widths = [20, 18, 20, 24, 22, 16, 20, 22, 20, 20, 16, 16, 24, 22, 18, 28, 36]
     for index, width in enumerate(widths, 1):
         worksheet.column_dimensions[worksheet.cell(1, index).column_letter].width = width
 
     catalog_data = {
         "Tipos": list(TipoEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
         "Marcas": list(MarcaEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
-        "Ubicaciones": list(Ubicacion.objects.filter(activa=True).values_list("nombre", flat=True)),
+        "F.F.O.O. o Mesas": [location.nombre for location in available_locations],
+        "Ubicaciones fisicas": list(
+            UbicacionFisica.objects.filter(
+                ubicacion__in=available_locations,
+                activa=True,
+            )
+            .values_list("nombre", flat=True)
+            .distinct()
+        ) or ["Santa Lucía"],
         "Estados": [label for _, label in Equipo.Estado.choices],
         "RAM": sorted(RAM_OPTIONS, key=lambda value: int(value.split()[0])),
         "Almacenamiento": sorted(STORAGE_OPTIONS),
@@ -346,15 +456,16 @@ def plantilla_equipos_excel(request):
         "B": "Marcas",
         "F": "RAM",
         "G": "Almacenamiento",
-        "M": "Ubicaciones",
-        "N": "Estados",
+        "M": "F.F.O.O. o Mesas",
+        "N": "Ubicaciones fisicas",
+        "O": "Estados",
     }
     for target_column, catalog_name in validations.items():
         catalog_column, last_row = catalog_columns[catalog_name]
         validation = DataValidation(
             type="list",
             formula1=f"'Catalogos'!${catalog_column}$2:${catalog_column}${last_row}",
-            allow_blank=target_column not in {"A", "M", "N"},
+            allow_blank=target_column not in {"A", "M", "N", "O"},
         )
         worksheet.add_data_validation(validation)
         validation.add(f"{target_column}2:{target_column}1001")
@@ -405,10 +516,13 @@ def importar_equipos(request):
                 clean = {key: str(value or "").strip() for key, value in row.items()}
                 type_name = clean["tipo_equipo"]
                 serial = clean["numero_serie"]
-                location_name = clean["ubicacion"]
+                location_name = clean["ffoo_o_mesa"]
+                physical_location_name = clean["ubicacion_fisica"] or "Santa Lucía"
                 state_label = clean["estado"]
                 if not type_name or not serial or not location_name or not state_label:
-                    raise ValueError(f"Fila {row_number}: tipo_equipo, numero_serie, ubicacion y estado son obligatorios.")
+                    raise ValueError(
+                        f"Fila {row_number}: tipo_equipo, numero_serie, ffoo_o_mesa y estado son obligatorios."
+                    )
 
                 serial_key = serial.lower()
                 if serial_key in seen_serials or Equipo.objects.filter(numero_serie__iexact=serial).exists():
@@ -431,7 +545,11 @@ def importar_equipos(request):
                 if not has_full_inventory_access(request) and (
                     not responsable or responsable.ubicacion_id != location.id
                 ):
-                    raise PermissionError(f"Fila {row_number}: no puedes importar equipos para {location.nombre}.")
+                    expected_location = responsable.ubicacion.nombre if responsable and responsable.ubicacion else "tu F.F.O.O. o Mesa"
+                    raise PermissionError(
+                        f"Fila {row_number}: F.F.O.O. o Mesa debe ser '{expected_location}'."
+                    )
+                physical_location = get_or_create_physical_location(location, physical_location_name)
 
                 state = state_map.get(state_label.lower())
                 if not state:
@@ -472,6 +590,7 @@ def importar_equipos(request):
                     garantia_hasta=warranty_date,
                     estado=state,
                     ubicacion=location,
+                    ubicacion_fisica=physical_location,
                     asignado_a=assigned_to,
                     observaciones=clean["observaciones"],
                 )
@@ -486,6 +605,7 @@ def importar_equipos(request):
                     descripcion=f"Alta mediante importacion de Excel con estado {state_label}.",
                     **movement_actor_data(request, responsable),
                     ubicacion=location,
+                    ubicacion_fisica=physical_location,
                     estado_equipo=state,
                     asignado_a=assigned_to,
                 )
@@ -518,8 +638,12 @@ def session_user_payload(request):
 
 @login_required
 def home(request):
-    equipos = Equipo.objects.select_related("ubicacion").prefetch_related("movimientos", "resguardos").all()
+    equipos = Equipo.objects.select_related("ubicacion", "ubicacion_fisica").prefetch_related("movimientos", "resguardos").all()
     ubicaciones = Ubicacion.objects.filter(activa=True).order_by("nombre")
+    ubicaciones_fisicas = UbicacionFisica.objects.filter(
+        ubicacion__in=ubicaciones,
+        activa=True,
+    ).select_related("ubicacion")
     responsables = Responsable.objects.select_related("ubicacion", "user").order_by("nombre")
     tipos_equipo = TipoEquipo.objects.filter(activo=True).order_by("nombre")
     marcas_equipo = MarcaEquipo.objects.filter(activo=True).order_by("nombre")
@@ -528,6 +652,10 @@ def home(request):
     context = {
         "equipment_data": [equipment_payload(equipo) for equipo in equipos],
         "location_data": [location_payload(ubicacion) for ubicacion in ubicaciones],
+        "physical_location_data": [
+            physical_location_payload(ubicacion_fisica)
+            for ubicacion_fisica in ubicaciones_fisicas
+        ],
         "responsible_data": [responsible_payload(responsable) for responsable in responsables],
         "equipment_type_data": list(tipos_equipo.values("id", "nombre")),
         "equipment_brand_data": list(marcas_equipo.values("id", "nombre")),
@@ -542,6 +670,140 @@ def home(request):
         "can_manage_equipment_types": request.user.is_staff,
     }
     return render(request, "inventario/index.html", context)
+
+
+@login_required
+def descargar_reporte(request):
+    report_type = request.GET.get("tipo", "inventario").strip()
+    allowed_reports = {"inventario", "garantias", "mantenimiento", "bajas", "movimientos"}
+    if report_type not in allowed_reports:
+        return HttpResponse("Tipo de reporte no valido.", status=400)
+
+    equipment_queryset = apply_report_location_filters(request, report_equipment_queryset(request))
+    workbook = Workbook()
+    worksheet = workbook.active
+
+    if report_type == "movimientos":
+        worksheet.title = "Movimientos"
+        worksheet.append(
+            [
+                "Fecha y hora",
+                "Movimiento",
+                "Numero de serie",
+                "Equipo",
+                "F.F.O.O. o Mesa",
+                "Ubicacion fisica",
+                "Estado",
+                "Asignado a",
+                "Realizado por",
+                "Rol",
+                "Direccion IP",
+                "Descripcion",
+            ]
+        )
+        movements = (
+            Movimiento.objects.filter(equipo__in=equipment_queryset)
+            .select_related("equipo", "ubicacion", "ubicacion_fisica")
+            .order_by("-creado")
+        )
+        for movement in movements:
+            created_at = timezone.localtime(movement.creado)
+            worksheet.append(
+                [
+                    created_at.replace(tzinfo=None),
+                    movement.get_tipo_display(),
+                    movement.equipo.numero_serie,
+                    str(movement.equipo),
+                    movement.ubicacion.nombre if movement.ubicacion else "",
+                    movement.ubicacion_fisica.nombre if movement.ubicacion_fisica else "",
+                    movement.get_estado_equipo_display() if movement.estado_equipo else "",
+                    movement.asignado_a,
+                    movement.realizado_por_nombre,
+                    movement.realizado_por_rol,
+                    str(movement.direccion_ip or ""),
+                    movement.descripcion,
+                ]
+            )
+        style_report_worksheet(worksheet, [20, 18, 24, 32, 25, 24, 18, 28, 25, 22, 18, 55])
+        for cell in worksheet["A"][1:]:
+            cell.number_format = "dd/mm/yyyy hh:mm"
+        return report_workbook_response(workbook, "movimientos")
+
+    today = timezone.localdate()
+    report_labels = {
+        "inventario": ("Inventario", "inventario"),
+        "garantias": ("Garantias", "garantias"),
+        "mantenimiento": ("Mantenimiento", "mantenimiento"),
+        "bajas": ("Bajas", "bajas"),
+    }
+    worksheet.title = report_labels[report_type][0]
+
+    if report_type == "garantias":
+        try:
+            warranty_days = min(max(int(request.GET.get("dias", "90")), 1), 730)
+        except ValueError:
+            warranty_days = 90
+        equipment_queryset = equipment_queryset.filter(
+            garantia_hasta__isnull=False,
+            garantia_hasta__gte=today,
+            garantia_hasta__lte=today + timedelta(days=warranty_days),
+        ).order_by("garantia_hasta", "ubicacion__nombre")
+    elif report_type == "mantenimiento":
+        equipment_queryset = equipment_queryset.filter(estado=Equipo.Estado.MANTENIMIENTO)
+    elif report_type == "bajas":
+        equipment_queryset = equipment_queryset.filter(estado=Equipo.Estado.BAJA)
+
+    worksheet.append(
+        [
+            "Tipo",
+            "Marca",
+            "Modelo",
+            "Numero de serie",
+            "F.F.O.O. o Mesa",
+            "Ubicacion fisica",
+            "Estado",
+            "Asignado a",
+            "Fecha de compra",
+            "Garantia hasta",
+            "Procesador",
+            "RAM",
+            "Almacenamiento",
+            "Sistema operativo",
+            "MAC Ethernet",
+            "MAC WiFi",
+            "Observaciones",
+        ]
+    )
+    for equipment_item in equipment_queryset.order_by("ubicacion__nombre", "tipo", "numero_serie"):
+        worksheet.append(
+            [
+                equipment_item.tipo,
+                equipment_item.marca,
+                equipment_item.modelo,
+                equipment_item.numero_serie,
+                equipment_item.ubicacion.nombre,
+                equipment_item.ubicacion_fisica.nombre if equipment_item.ubicacion_fisica else "",
+                equipment_item.get_estado_display(),
+                equipment_item.asignado_a,
+                equipment_item.fecha_compra,
+                equipment_item.garantia_hasta,
+                equipment_item.procesador,
+                equipment_item.memoria_ram,
+                equipment_item.almacenamiento,
+                equipment_item.sistema_operativo,
+                equipment_item.mac_ethernet,
+                equipment_item.mac_wifi,
+                equipment_item.observaciones,
+            ]
+        )
+    style_report_worksheet(
+        worksheet,
+        [18, 18, 20, 25, 25, 24, 18, 28, 16, 16, 24, 14, 20, 24, 20, 20, 45],
+    )
+    for column in ("I", "J"):
+        for cell in worksheet[column][1:]:
+            cell.number_format = "dd/mm/yyyy"
+    return report_workbook_response(workbook, report_labels[report_type][1])
 
 
 def admin_required_json(request):
@@ -649,7 +911,17 @@ def crear_ubicacion(request):
     if not created:
         return JsonResponse({"error": "Ya existe una ubicacion con ese nombre."}, status=400)
 
-    return JsonResponse({"location": location_payload(ubicacion)}, status=201)
+    physical_location, _ = UbicacionFisica.objects.get_or_create(
+        ubicacion=ubicacion,
+        nombre="Santa Lucía",
+    )
+    return JsonResponse(
+        {
+            "location": location_payload(ubicacion),
+            "physicalLocation": physical_location_payload(physical_location),
+        },
+        status=201,
+    )
 
 
 @login_required
@@ -848,6 +1120,10 @@ def crear_equipo(request):
     if not has_full_inventory_access(request):
         if not responsable or responsable.ubicacion_id != ubicacion.id:
             return JsonResponse({"error": "Solo puedes registrar equipos en tu frente o mesa."}, status=403)
+    ubicacion_fisica = get_or_create_physical_location(
+        ubicacion,
+        request.POST.get("ubicacion_fisica", ""),
+    )
 
     if Equipo.objects.filter(numero_serie__iexact=numero_serie).exists():
         return JsonResponse({"error": "Ya existe un equipo con ese numero de serie."}, status=400)
@@ -888,6 +1164,7 @@ def crear_equipo(request):
             factura=request.FILES.get("factura"),
             estado=estado,
             ubicacion=ubicacion,
+            ubicacion_fisica=ubicacion_fisica,
             asignado_a=asignado_a,
             observaciones=request.POST.get("observaciones", "").strip(),
         )
@@ -911,6 +1188,7 @@ def crear_equipo(request):
             descripcion=descripcion,
             **movement_actor_data(request, responsable),
             ubicacion=ubicacion,
+            ubicacion_fisica=ubicacion_fisica,
             estado_equipo=estado,
             asignado_a=asignado_a,
         )
@@ -948,6 +1226,11 @@ def cambiar_estado_equipo(request, numero_serie):
         ubicacion = get_object_or_404(Ubicacion, pk=ubicacion_id, activa=True)
         if not has_full_inventory_access(request) and ubicacion.id != equipo.ubicacion_id:
             return JsonResponse({"error": "No puedes mover equipos fuera de tu frente o mesa."}, status=403)
+    ubicacion_fisica = get_or_create_physical_location(
+        ubicacion,
+        request.POST.get("ubicacion_fisica", "")
+        or (equipo.ubicacion_fisica.nombre if equipo.ubicacion_fisica else "Santa Lucía"),
+    )
 
     responsable = current_responsable(request)
     tipo_movimiento = Movimiento.Tipo.CAMBIO_ESTADO
@@ -967,7 +1250,8 @@ def cambiar_estado_equipo(request, numero_serie):
     equipo.estado = estado
     equipo.asignado_a = asignado_a
     equipo.ubicacion = ubicacion
-    equipo.save(update_fields=["estado", "asignado_a", "ubicacion", "actualizado"])
+    equipo.ubicacion_fisica = ubicacion_fisica
+    equipo.save(update_fields=["estado", "asignado_a", "ubicacion", "ubicacion_fisica", "actualizado"])
 
     Movimiento.objects.create(
         equipo=equipo,
@@ -975,6 +1259,7 @@ def cambiar_estado_equipo(request, numero_serie):
         descripcion=descripcion,
         **movement_actor_data(request, responsable),
         ubicacion=ubicacion,
+        ubicacion_fisica=ubicacion_fisica,
         estado_equipo=estado,
         asignado_a=asignado_a,
     )
@@ -1071,6 +1356,10 @@ def build_safekeeping_pdf(equipo, fecha_asignacion):
         Spacer(1, 10),
         Paragraph('Unidad o dependencia: Agto. Ings. "Felipe Angeles".', normal),
         Paragraph(f"{location_label}: <b>{location_name}</b>.", normal),
+        Paragraph(
+            f"Ubicacion fisica: <b>{equipo.ubicacion_fisica.nombre if equipo.ubicacion_fisica else 'Santa Lucia'}</b>.",
+            normal,
+        ),
         Paragraph(f"Responsable: <b>{equipo.asignado_a}</b>.", normal),
         Paragraph(f"Concepto: Resguardo de equipos {location_label} {location_name}.", normal),
         Spacer(1, 10),
@@ -1147,7 +1436,7 @@ def build_safekeeping_pdf(equipo, fecha_asignacion):
 @require_POST
 def generar_resguardo_equipo(request, numero_serie):
     equipo = get_object_or_404(
-        Equipo.objects.select_related("ubicacion").prefetch_related("movimientos"),
+        Equipo.objects.select_related("ubicacion", "ubicacion_fisica").prefetch_related("movimientos"),
         numero_serie=numero_serie,
     )
     if not can_manage_equipment(request, equipo):
@@ -1189,6 +1478,7 @@ def generar_resguardo_equipo(request, numero_serie):
         equipo=equipo,
         asignado_a=equipo.asignado_a,
         ubicacion_nombre=equipo.ubicacion.nombre,
+        ubicacion_fisica_nombre=equipo.ubicacion_fisica.nombre if equipo.ubicacion_fisica else "Santa Lucía",
         fecha_asignacion=fecha_asignacion,
         generado_por=request.user,
         generado_por_nombre=actor_name,

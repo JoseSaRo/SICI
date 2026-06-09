@@ -21,6 +21,31 @@ class Ubicacion(models.Model):
         return self.nombre
 
 
+class UbicacionFisica(models.Model):
+    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.CASCADE, related_name="ubicaciones_fisicas")
+    nombre = models.CharField(max_length=120)
+    activa = models.BooleanField(default=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["ubicacion__nombre", "nombre"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ubicacion", "nombre"],
+                name="ubicacion_fisica_unica_por_ffoo_mesa",
+            )
+        ]
+        verbose_name = "ubicacion fisica"
+        verbose_name_plural = "ubicaciones fisicas"
+
+    def save(self, *args, **kwargs):
+        self.nombre = self.nombre.strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.ubicacion.nombre} - {self.nombre}"
+
+
 class Responsable(models.Model):
     class Rol(models.TextChoices):
         ADMIN = "admin", "Administrador"
@@ -151,6 +176,7 @@ class Equipo(models.Model):
     factura = models.FileField(upload_to="facturas/", blank=True)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.DISPONIBLE)
     ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT)
+    ubicacion_fisica = models.ForeignKey(UbicacionFisica, on_delete=models.PROTECT, null=True, blank=True)
     asignado_a = models.CharField(max_length=120, blank=True)
     observaciones = models.TextField(blank=True)
     creado = models.DateTimeField(auto_now_add=True)
@@ -185,6 +211,7 @@ class Movimiento(models.Model):
     direccion_ip = models.GenericIPAddressField(null=True, blank=True)
     agente_usuario = models.TextField(blank=True)
     ubicacion = models.ForeignKey(Ubicacion, on_delete=models.SET_NULL, null=True, blank=True)
+    ubicacion_fisica = models.ForeignKey(UbicacionFisica, on_delete=models.SET_NULL, null=True, blank=True)
     estado_equipo = models.CharField(max_length=20, choices=Equipo.Estado.choices, blank=True)
     asignado_a = models.CharField(max_length=120, blank=True)
     creado = models.DateTimeField(auto_now_add=True)
@@ -227,6 +254,7 @@ class ResguardoEquipo(models.Model):
     equipo = models.ForeignKey(Equipo, on_delete=models.CASCADE, related_name="resguardos")
     asignado_a = models.CharField(max_length=120)
     ubicacion_nombre = models.CharField(max_length=120)
+    ubicacion_fisica_nombre = models.CharField(max_length=120, blank=True)
     fecha_asignacion = models.DateField()
     generado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -16,6 +16,7 @@ urlpatterns = [
     path("equipos/crear/", views.crear_equipo, name="crear_equipo"),
     path("equipos/importar/", views.importar_equipos, name="importar_equipos"),
     path("equipos/plantilla-excel/", views.plantilla_equipos_excel, name="plantilla_equipos_excel"),
+    path("reportes/descargar/", views.descargar_reporte, name="descargar_reporte"),
     path("tipos-equipo/crear/", views.crear_tipo_equipo, name="crear_tipo_equipo"),
     path("tipos-equipo/solicitar/", views.solicitar_tipo_equipo, name="solicitar_tipo_equipo"),
     path("solicitudes-tipo-equipo/<int:solicitud_id>/aprobar/", views.aprobar_solicitud_tipo_equipo, name="aprobar_solicitud_tipo_equipo"),

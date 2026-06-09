@@ -506,6 +506,22 @@ td,
   align-items: start;
 }
 
+.timeline-action {
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timeline-action:hover strong,
+.timeline-action:focus-visible strong {
+  color: var(--green);
+}
+
 .timeline-item p {
   margin: 4px 0 0;
   color: var(--muted);
@@ -824,6 +840,60 @@ textarea {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.report-toolbar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.report-toolbar label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.report-toolbar select {
+  width: 100%;
+}
+
+.report-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-summary div {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--line);
+}
+
+.report-summary div:last-child {
+  border-right: 0;
+}
+
+.report-summary span,
+.report-note {
+  color: var(--muted);
+}
+
+.report-summary strong {
+  font-size: 1.45rem;
+}
+
+.report-note {
+  margin: 12px 0 0;
+  font-size: 0.86rem;
 }
 
 .admin-form-grid {
@@ -1498,6 +1568,14 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .report-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .front-bars div {
     grid-template-columns: minmax(0, 1fr) 2fr 32px;
   }
@@ -1573,6 +1651,16 @@ textarea {
 
   .metrics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .report-toolbar,
+  .report-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .report-summary div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .metric {
