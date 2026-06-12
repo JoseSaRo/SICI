@@ -143,6 +143,22 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function downloadBase64File(base64Data, filename, mimeType) {
+  const binary = window.atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function qrPayload(item) {
   return `SICI|${item.serial}`;
 }
@@ -2237,7 +2253,18 @@ excelInput.addEventListener("change", async (event) => {
     syncLocationEquipmentCounts();
     renderLocations();
     renderInventory();
-    importStatus.textContent = `${data.count} equipo${data.count === 1 ? "" : "s"} importado${data.count === 1 ? "" : "s"} correctamente.`;
+    if (data.rejectedFile) {
+      downloadBase64File(
+        data.rejectedFile,
+        data.rejectedFilename || "Equipos-rechazados-SICI.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      importStatus.textContent =
+        `${data.count} equipo${data.count === 1 ? "" : "s"} importado${data.count === 1 ? "" : "s"} y ` +
+        `${data.rejectedCount} rechazado${data.rejectedCount === 1 ? "" : "s"}. Se descargo el Excel con las observaciones.`;
+    } else {
+      importStatus.textContent = `${data.count} equipo${data.count === 1 ? "" : "s"} importado${data.count === 1 ? "" : "s"} correctamente.`;
+    }
   } catch (error) {
     importStatus.textContent = "Error de conexion al importar el archivo.";
   } finally {

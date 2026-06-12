@@ -1,6 +1,8 @@
 from io import BytesIO
 from datetime import datetime, timedelta
+import base64
 import csv
+import re
 from io import TextIOWrapper
 from urllib.parse import quote, urlencode
 
@@ -376,8 +378,7 @@ def import_rows_from_file(uploaded_file):
     raise ValueError("Formato no soportado.")
 
 
-@login_required
-def plantilla_equipos_excel(request):
+def equipment_catalog_data(request):
     responsable = current_responsable(request)
     scoped_location = None if has_full_inventory_access(request) else responsable.ubicacion if responsable else None
     available_locations = (
@@ -385,6 +386,118 @@ def plantilla_equipos_excel(request):
         if scoped_location
         else list(Ubicacion.objects.filter(activa=True).order_by("nombre"))
     )
+    return available_locations, {
+        "Tipos": list(TipoEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
+        "Marcas": list(MarcaEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
+        "F.F.O.O. o Mesas": [location.nombre for location in available_locations],
+        "Ubicaciones fisicas": list(
+            UbicacionFisica.objects.filter(
+                ubicacion__in=available_locations,
+                activa=True,
+            )
+            .values_list("nombre", flat=True)
+            .distinct()
+        ) or ["Santa Lucía"],
+        "Estados": [label for _, label in Equipo.Estado.choices],
+        "RAM": sorted(RAM_OPTIONS, key=lambda value: int(value.split()[0])),
+        "Almacenamiento": sorted(STORAGE_OPTIONS),
+    }
+
+
+def populate_catalog_sheet(catalogs, catalog_data):
+    catalogs.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(catalog_data))
+    note_cell = catalogs.cell(
+        row=1,
+        column=1,
+        value=(
+            "Utiliza exactamente las opciones de este catalogo. Si necesitas una marca, tipo de equipo, "
+            "memoria RAM o almacenamiento que no aparece, ponte en contacto con la Mesa TIC."
+        ),
+    )
+    note_cell.font = Font(bold=True, color="7A3E00")
+    note_cell.fill = PatternFill("solid", fgColor="FFF2CC")
+    note_cell.alignment = Alignment(wrap_text=True, vertical="center")
+    catalogs.row_dimensions[1].height = 42
+
+    catalog_columns = {}
+    for column, (title, values) in enumerate(catalog_data.items(), 1):
+        title_cell = catalogs.cell(row=3, column=column, value=title)
+        title_cell.font = Font(bold=True, color="FFFFFF")
+        title_cell.fill = PatternFill("solid", fgColor="176B45")
+        title_cell.alignment = Alignment(horizontal="center")
+        for row, value in enumerate(values, 4):
+            catalogs.cell(row=row, column=column, value=value)
+        catalogs.column_dimensions[title_cell.column_letter].width = max(20, len(title) + 4)
+        catalog_columns[title] = (title_cell.column_letter, max(4, len(values) + 3))
+
+    catalogs.freeze_panes = "A4"
+    return catalog_columns
+
+
+def add_equipment_validations(worksheet, catalog_columns, last_row=1001):
+    validations = {
+        "A": "Tipos",
+        "B": "Marcas",
+        "F": "RAM",
+        "G": "Almacenamiento",
+        "M": "F.F.O.O. o Mesas",
+        "N": "Ubicaciones fisicas",
+        "O": "Estados",
+    }
+    for target_column, catalog_name in validations.items():
+        catalog_column, catalog_last_row = catalog_columns[catalog_name]
+        validation = DataValidation(
+            type="list",
+            formula1=f"'Catalogos'!${catalog_column}$4:${catalog_column}${catalog_last_row}",
+            allow_blank=target_column not in {"A", "M", "N", "O"},
+        )
+        worksheet.add_data_validation(validation)
+        validation.add(f"{target_column}2:{target_column}{last_row}")
+
+
+def rejection_reason(error):
+    return re.sub(r"^Fila \d+:\s*", "", str(error)).strip()
+
+
+def rejected_rows_workbook(headers, rejected_rows, catalog_data):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Equipos rechazados"
+    catalogs = workbook.create_sheet("Catalogos")
+    output_headers = [*headers, "observaciones_rechazo"]
+    worksheet.append(output_headers)
+
+    for row, reason in rejected_rows:
+        worksheet.append([row.get(header, "") for header in headers] + [reason])
+
+    header_fill = PatternFill("solid", fgColor="A61B1B")
+    for cell in worksheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = worksheet.dimensions
+    widths = [20, 18, 20, 24, 22, 16, 20, 22, 20, 20, 16, 16, 24, 22, 18, 28, 36, 60]
+    for index, width in enumerate(widths, 1):
+        worksheet.column_dimensions[worksheet.cell(1, index).column_letter].width = width
+    for row in worksheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    catalog_columns = populate_catalog_sheet(catalogs, catalog_data)
+    add_equipment_validations(worksheet, catalog_columns, max(1001, len(rejected_rows) + 1))
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+@login_required
+def plantilla_equipos_excel(request):
+    available_locations, catalog_data = equipment_catalog_data(request)
+    responsable = current_responsable(request)
+    scoped_location = None if has_full_inventory_access(request) else responsable.ubicacion if responsable else None
     example_location = scoped_location or next(
         (location for location in available_locations if location.nombre.strip().lower() in {"tic", "mesa tic"}),
         available_locations[0] if available_locations else None,
@@ -428,49 +541,8 @@ def plantilla_equipos_excel(request):
     for index, width in enumerate(widths, 1):
         worksheet.column_dimensions[worksheet.cell(1, index).column_letter].width = width
 
-    catalog_data = {
-        "Tipos": list(TipoEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
-        "Marcas": list(MarcaEquipo.objects.filter(activo=True).values_list("nombre", flat=True)),
-        "F.F.O.O. o Mesas": [location.nombre for location in available_locations],
-        "Ubicaciones fisicas": list(
-            UbicacionFisica.objects.filter(
-                ubicacion__in=available_locations,
-                activa=True,
-            )
-            .values_list("nombre", flat=True)
-            .distinct()
-        ) or ["Santa Lucía"],
-        "Estados": [label for _, label in Equipo.Estado.choices],
-        "RAM": sorted(RAM_OPTIONS, key=lambda value: int(value.split()[0])),
-        "Almacenamiento": sorted(STORAGE_OPTIONS),
-    }
-    catalog_columns = {}
-    for column, (title, values) in enumerate(catalog_data.items(), 1):
-        catalogs.cell(row=1, column=column, value=title)
-        for row, value in enumerate(values, 2):
-            catalogs.cell(row=row, column=column, value=value)
-        catalog_columns[title] = (catalogs.cell(1, column).column_letter, max(2, len(values) + 1))
-
-    validations = {
-        "A": "Tipos",
-        "B": "Marcas",
-        "F": "RAM",
-        "G": "Almacenamiento",
-        "M": "F.F.O.O. o Mesas",
-        "N": "Ubicaciones fisicas",
-        "O": "Estados",
-    }
-    for target_column, catalog_name in validations.items():
-        catalog_column, last_row = catalog_columns[catalog_name]
-        validation = DataValidation(
-            type="list",
-            formula1=f"'Catalogos'!${catalog_column}$2:${catalog_column}${last_row}",
-            allow_blank=target_column not in {"A", "M", "N", "O"},
-        )
-        worksheet.add_data_validation(validation)
-        validation.add(f"{target_column}2:{target_column}1001")
-
-    catalogs.sheet_state = "hidden"
+    catalog_columns = populate_catalog_sheet(catalogs, catalog_data)
+    add_equipment_validations(worksheet, catalog_columns)
     buffer = BytesIO()
     workbook.save(buffer)
     buffer.seek(0)
@@ -491,8 +563,13 @@ def importar_equipos(request):
     except (ValueError, KeyError, OSError):
         return JsonResponse({"error": "No fue posible leer el archivo. Usa la plantilla XLSX o un CSV UTF-8."}, status=400)
 
-    if headers != EQUIPMENT_IMPORT_HEADERS:
+    accepted_headers = [
+        EQUIPMENT_IMPORT_HEADERS,
+        [*EQUIPMENT_IMPORT_HEADERS, "observaciones_rechazo"],
+    ]
+    if headers not in accepted_headers:
         return JsonResponse({"error": "Las columnas no coinciden con la plantilla oficial de SICI."}, status=400)
+    headers = EQUIPMENT_IMPORT_HEADERS
 
     rows = []
     for row_number, values in enumerate(raw_rows, 2):
@@ -507,12 +584,14 @@ def importar_equipos(request):
     locations_by_name = {item.nombre.lower(): item for item in Ubicacion.objects.filter(activa=True)}
     state_map = {label.lower(): value for value, label in Equipo.Estado.choices}
     responsable = current_responsable(request)
+    _, catalog_data = equipment_catalog_data(request)
     imported = []
+    rejected = []
     seen_serials = set()
 
-    try:
-        with transaction.atomic():
-            for row_number, row in rows:
+    for row_number, row in rows:
+        try:
+            with transaction.atomic():
                 clean = {key: str(value or "").strip() for key, value in row.items()}
                 type_name = clean["tipo_equipo"]
                 serial = clean["numero_serie"]
@@ -527,7 +606,6 @@ def importar_equipos(request):
                 serial_key = serial.lower()
                 if serial_key in seen_serials or Equipo.objects.filter(numero_serie__iexact=serial).exists():
                     raise ValueError(f"Fila {row_number}: el numero de serie {serial} ya existe o esta repetido.")
-                seen_serials.add(serial_key)
 
                 equipment_type = types.get(type_name.lower())
                 if not equipment_type:
@@ -610,12 +688,24 @@ def importar_equipos(request):
                     asignado_a=assigned_to,
                 )
                 imported.append(equipment_payload(equipment))
-    except PermissionError as error:
-        return JsonResponse({"error": str(error)}, status=403)
-    except ValueError as error:
-        return JsonResponse({"error": str(error)}, status=400)
+                seen_serials.add(serial_key)
+        except (PermissionError, ValueError, IntegrityError) as error:
+            rejected.append((row, rejection_reason(error)))
 
-    return JsonResponse({"equipment": imported, "count": len(imported)}, status=201)
+    response_data = {
+        "equipment": imported,
+        "count": len(imported),
+        "rejectedCount": len(rejected),
+    }
+    if rejected:
+        response_data.update(
+            {
+                "rejectedFile": rejected_rows_workbook(headers, rejected, catalog_data),
+                "rejectedFilename": f"Equipos-rechazados-SICI-{timezone.localdate():%Y%m%d}.xlsx",
+            }
+        )
+
+    return JsonResponse(response_data, status=201 if imported else 200)
 
 
 def session_user_payload(request):
