@@ -1,15 +1,24 @@
 <!doctype html>
 {% load static %}
+<!-- Acceso independiente para usuarios autorizados del sistema. -->
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SICI | Acceso</title>
-    <link rel="stylesheet" href="{% static 'inventario/estilos.css' %}" />
+    <script>
+      (() => {
+        const savedTheme = localStorage.getItem("sici-theme");
+        const theme = savedTheme || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <link rel="stylesheet" href="{% static 'inventario/estilos.css' %}?v=20260612-10" />
   </head>
   <body class="login-page">
     <main class="login-shell">
       <section class="login-panel">
+        <!-- Identidad institucional del acceso. -->
         <div class="login-logos">
           <img src="{% static 'inventario/recursos/mesa_tic_logo.jpg' %}" alt="Logo Mesa TIC" />
           <img src="{% static 'inventario/recursos/rodelagt_miniatura.png' %}" alt="Rodela del agrupamiento" />
@@ -21,6 +30,7 @@
           <p>Control de inventario de equipos informaticos</p>
         </div>
 
+        <!-- Credenciales y mensajes de validacion de la sesion. -->
         <form class="login-form" method="post" novalidate>
           {% csrf_token %}
           <div>
@@ -43,12 +53,18 @@
 
           <label for="{{ form.password.id_for_label }}">
             Contraseña
-            {{ form.password }}
+            <span class="password-field">
+              {{ form.password }}
+              <button class="password-toggle" type="button" aria-label="Mostrar contrasena" title="Mostrar contrasena">
+                <span class="eye-icon" aria-hidden="true"></span>
+              </button>
+            </span>
           </label>
 
           <button class="primary-btn full" type="submit">Entrar</button>
         </form>
       </section>
     </main>
+    <script src="{% static 'inventario/password-toggle.js' %}?v=20260612-1"></script>
   </body>
 </html>

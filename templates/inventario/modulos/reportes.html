@@ -1,4 +1,5 @@
 <section class="view" id="reports">
+  <!-- Consulta especializada y exportacion de informacion operativa. -->
   <div class="section-heading">
     <div>
       <span class="eyebrow">Consulta y exportacion</span>
@@ -7,6 +8,7 @@
     <button class="primary-btn" type="button" id="downloadReport">Descargar Excel</button>
   </div>
 
+  <!-- Criterios que definen el contenido del reporte. -->
   <div class="report-toolbar">
     <label>
       Reporte
@@ -22,6 +24,8 @@
       F.F.O.O. o Mesa
       <select id="reportLocation">
         <option value="">Todos los F.F.O.O. y Mesas</option>
+        <option value="type:frente">Todos los Frentes de Obra</option>
+        <option value="type:mesa">Todas las Mesas</option>
       </select>
     </label>
     <label>
@@ -30,9 +34,42 @@
         <option value="">Todas las ubicaciones fisicas</option>
       </select>
     </label>
+    <label>
+      Tipo de equipo
+      <select id="reportEquipmentType">
+        <option value="">Todos los tipos</option>
+      </select>
+    </label>
+    <label>
+      Marca
+      <select id="reportBrand">
+        <option value="">Todas las marcas</option>
+      </select>
+    </label>
+    <label>
+      Estado
+      <select id="reportStatus">
+        <option value="">Todos los estados</option>
+        <option value="Asignado">Asignado</option>
+        <option value="Disponible">Disponible</option>
+        <option value="Mantenimiento">Mantenimiento</option>
+        <option value="Dado de baja">Dado de baja</option>
+      </select>
+    </label>
+    <label>
+      Asignacion
+      <select id="reportAssignment">
+        <option value="">Todos</option>
+        <option value="assigned">Con persona asignada</option>
+        <option value="unassigned">Sin asignar</option>
+      </select>
+    </label>
     <label id="reportWarrantyDaysField">
-      Vencen en
+      Garantia
       <select id="reportWarrantyDays">
+        <option value="all">Todos los vencimientos</option>
+        <option value="none">Sin garantia registrada</option>
+        <option value="expired">Garantia vencida</option>
         <option value="30">30 dias</option>
         <option value="60">60 dias</option>
         <option value="90" selected>90 dias</option>
@@ -40,8 +77,10 @@
         <option value="365">1 ano</option>
       </select>
     </label>
+    <button class="ghost-btn report-filter-clear" id="clearReportFilters" type="button">Limpiar filtros</button>
   </div>
 
+  <!-- Totales de referencia para la consulta seleccionada. -->
   <div class="report-summary">
     <div>
       <span>Registros</span>
@@ -65,6 +104,7 @@
     </div>
   </div>
 
+  <!-- Vista previa antes de generar el archivo completo. -->
   <div class="table-wrap">
     <table>
       <thead>

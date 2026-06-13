@@ -1,22 +1,36 @@
 ﻿<section class="view" id="inventory">
+          <!-- Consulta, filtrado e importacion del inventario autorizado. -->
           <div class="section-heading">
             <div>
               <span class="eyebrow">Control operativo</span>
               <h2>Inventario de equipos</h2>
             </div>
-            <div class="filters">
+            <!-- Filtros combinables para reducir los registros visibles. -->
+            <div class="inventory-filters">
               <select id="frontFilter">
                 <option value="all">Todos los F.F.O.O. y Mesas</option>
+                <option value="type:mesa">Todas las Mesas</option>
+                <option value="type:frente">Todos los Frentes de Obra</option>
               </select>
-              <select id="statusFilter">
-                <option value="all">Todos los estados</option>
-                <option value="Asignado">Asignado</option>
-                <option value="Disponible">Disponible</option>
-                <option value="Mantenimiento">Mantenimiento</option>
-                <option value="Dado de baja">Dado de baja</option>
+              <select id="physicalLocationFilter">
+                <option value="all">Todas las ubicaciones f&#237;sicas</option>
               </select>
+              <details class="multi-filter" id="typeFilter">
+                <summary>Tipos de equipo</summary>
+                <div class="multi-filter-menu" data-filter-options="type"></div>
+              </details>
+              <details class="multi-filter" id="brandFilter">
+                <summary>Marcas</summary>
+                <div class="multi-filter-menu" data-filter-options="brand"></div>
+              </details>
+              <details class="multi-filter" id="statusFilter">
+                <summary>Estados</summary>
+                <div class="multi-filter-menu" data-filter-options="status"></div>
+              </details>
+              <button class="ghost-btn filter-clear" id="clearInventoryFilters" type="button">Limpiar filtros</button>
             </div>
           </div>
+          <!-- Carga masiva y descarga de la plantilla oficial. -->
           <div class="import-panel">
             <div>
               <span class="eyebrow">Carga inicial</span>
@@ -30,21 +44,64 @@
             </div>
             <p class="import-status" id="importStatus">Formatos permitidos: .xlsx y .csv</p>
           </div>
-          <div class="table-wrap">
-            <table>
+          <!-- Tabla principal con ordenamiento y desplazamiento sincronizado. -->
+          <div class="table-scroll-top" id="inventoryScrollTop" aria-label="Desplazamiento horizontal superior">
+            <div></div>
+          </div>
+          <div class="table-wrap" id="inventoryTableWrap">
+            <table id="inventoryTable">
               <thead>
                 <tr>
-                  <th>Equipo</th>
-                  <th>Serie</th>
-                  <th>Asignado a</th>
-                  <th>F.F.O.O. o Mesa</th>
-                  <th>Estado</th>
-                  <th>Garantia</th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort="type">Equipo <span>↕</span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort="serial">Serie <span>↕</span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort="user">Asignado a <span>↕</span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort="front">F.F.O.O. o Mesa <span>↕</span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort="status">Estado <span>↕</span></button></th>
+                  <th aria-sort="none"><button class="sort-button" type="button" data-sort="warranty">Garantia <span>↕</span></button></th>
                   <th>QR</th>
-                  <th></th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody id="inventoryRows"></tbody>
             </table>
           </div>
+
+          <!-- Revision previa de una carga masiva antes de guardar registros. -->
+          <dialog class="import-preview-dialog" id="importPreviewDialog" aria-labelledby="importPreviewTitle">
+            <div class="import-preview-panel">
+              <div class="import-preview-heading">
+                <div>
+                  <span class="eyebrow">Vista previa</span>
+                  <h2 id="importPreviewTitle">Revisar importacion</h2>
+                  <p id="importPreviewFilename"></p>
+                </div>
+                <button class="icon-btn" id="closeImportPreview" type="button" aria-label="Cerrar">x</button>
+              </div>
+
+              <div class="import-preview-summary">
+                <div><span>Total</span><strong id="importPreviewTotal">0</strong></div>
+                <div><span>Se cargaran</span><strong id="importPreviewValid">0</strong></div>
+                <div><span>Con error</span><strong id="importPreviewRejected">0</strong></div>
+              </div>
+
+              <section class="import-preview-section">
+                <h3>Equipos que se cargaran</h3>
+                <div class="import-type-summary" id="importTypeSummary"></div>
+              </section>
+
+              <section class="import-preview-section" id="importErrorSection">
+                <div class="import-preview-section-heading">
+                  <h3>Registros con error</h3>
+                  <p>Estas filas no se cargaran y se incluiran en el Excel de rechazados.</p>
+                </div>
+                <div class="import-error-list" id="importErrorList"></div>
+              </section>
+
+              <p class="form-status" id="importPreviewStatus"></p>
+              <div class="import-preview-actions">
+                <button class="ghost-btn" id="cancelImportPreview" type="button">Cancelar</button>
+                <button class="primary-btn" id="confirmImportPreview" type="button">Cargar equipos validos</button>
+              </div>
+            </div>
+          </dialog>
         </section>

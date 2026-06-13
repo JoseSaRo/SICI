@@ -3,10 +3,12 @@
 {% block title %}SICI | Control de Inventario{% endblock %}
 
 {% block body %}
+  <!-- Contenedor principal y navegacion persistente. -->
   <div class="app-shell">
     {% include "inventario/parciales/menu_lateral.html" %}
 
     <main class="workspace">
+      <!-- Vistas operativas disponibles segun el rol activo. -->
       {% include "inventario/parciales/barra_superior.html" %}
       {% include "inventario/modulos/panel.html" %}
       {% include "inventario/modulos/inventario.html" %}
@@ -18,6 +20,8 @@
     </main>
   </div>
 
+  <!-- Componentes auxiliares compartidos por todos los modulos. -->
   {% include "inventario/parciales/panel_detalle.html" %}
+  {% include "inventario/parciales/dialogo_sici.html" %}
   {% include "inventario/parciales/datos_scripts.html" %}
 {% endblock %}

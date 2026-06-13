@@ -1,0 +1,24 @@
+<dialog class="sici-dialog" id="siciDialog" aria-labelledby="siciDialogTitle">
+  <!-- Dialogo reutilizable para avisos, confirmaciones y datos sensibles. -->
+  <form class="sici-dialog-panel" method="dialog">
+    <div class="sici-dialog-heading">
+      <span class="eyebrow">SICI</span>
+      <h2 id="siciDialogTitle">Confirmacion</h2>
+    </div>
+    <p id="siciDialogMessage"></p>
+    <label class="sici-dialog-field form-collapsed" id="siciDialogField">
+      <span id="siciDialogInputLabel">Valor</span>
+      <span class="password-field">
+        <input id="siciDialogInput" type="password" autocomplete="new-password" />
+        <button class="password-toggle" type="button" aria-label="Mostrar contrasena" title="Mostrar contrasena">
+          <span class="eye-icon" aria-hidden="true"></span>
+        </button>
+      </span>
+    </label>
+    <p class="form-status" id="siciDialogStatus"></p>
+    <div class="sici-dialog-actions">
+      <button class="ghost-btn" type="button" id="siciDialogCancel">Cancelar</button>
+      <button class="primary-btn" type="submit" id="siciDialogConfirm">Aceptar</button>
+    </div>
+  </form>
+</dialog>

@@ -1,4 +1,5 @@
 ﻿{% load static %}
+<!-- Datos serializados que inicializan la aplicacion en el navegador. -->
 {{ equipment_data|json_script:"equipment-data" }}
     {{ location_data|json_script:"location-data" }}
     {{ physical_location_data|json_script:"physical-location-data" }}
@@ -7,9 +8,12 @@
     {{ equipment_brand_data|json_script:"equipment-brand-data" }}
     {{ equipment_type_request_data|json_script:"equipment-type-request-data" }}
     {{ equipment_brand_request_data|json_script:"equipment-brand-request-data" }}
+    <!-- Configuracion publica requerida por los modulos JavaScript. -->
     <script>
       window.SICI_QR_BASE_URL = "/equipos/";
       window.SICI_CAN_MANAGE_EQUIPMENT_TYPES = {{ can_manage_equipment_types|yesno:"true,false" }};
     </script>
+    <!-- Dependencias y comportamiento principal de la interfaz. -->
     <script src="{% static 'inventario/proveedores/jsQR.min.js' %}"></script>
-    <script src="{% static 'inventario/aplicacion.js' %}?v=20260611-1"></script>
+    <script src="{% static 'inventario/password-toggle.js' %}?v=20260612-1"></script>
+    <script src="{% static 'inventario/aplicacion.js' %}?v=20260612-17"></script>

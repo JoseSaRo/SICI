@@ -29,6 +29,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from .models import Equipo, EquipoEliminado, MarcaEquipo, Movimiento, ResguardoEquipo, Responsable, SolicitudMarcaEquipo, SolicitudTipoEquipo, TipoEquipo, Ubicacion, UbicacionFisica
 
 
+# Configuracion compartida por los flujos de inventario e importacion.
 User = get_user_model()
 
 RAM_OPTIONS = {
@@ -82,6 +83,7 @@ EQUIPMENT_IMPORT_HEADERS = [
 ]
 
 
+# Preparacion de datos que consume la interfaz principal.
 def format_date(value):
     return value.strftime("%d/%m/%Y") if value else "Sin registro"
 
@@ -91,11 +93,13 @@ def equipment_payload(equipo):
         "type": equipo.tipo,
         "typeId": equipo.tipo_equipo_id,
         "name": f"{equipo.marca} {equipo.modelo}".strip() or equipo.tipo,
+        "brand": equipo.marca or "Sin marca",
         "serial": equipo.numero_serie,
+        "createdAt": timezone.localtime(equipo.creado).isoformat(),
         "user": equipo.asignado_a or "Sin asignar",
         "front": equipo.ubicacion.nombre,
         "locationId": equipo.ubicacion_id,
-        "physicalLocation": equipo.ubicacion_fisica.nombre if equipo.ubicacion_fisica else "Santa Lucía",
+        "physicalLocation": equipo.ubicacion_fisica.nombre if equipo.ubicacion_fisica else "Santa Luc\u00eda",
         "physicalLocationId": equipo.ubicacion_fisica_id,
         "status": equipo.get_estado_display(),
         "warranty": format_date(equipo.garantia_hasta),
@@ -212,6 +216,7 @@ def equipment_brand_request_payload(solicitud):
     }
 
 
+# Identidad, alcance y permisos de la sesion activa.
 def current_role_value(request):
     if request.user.is_staff:
         return "admin"
@@ -262,6 +267,7 @@ def can_manage_equipment(request, equipo):
     return bool(responsable and responsable.ubicacion_id == equipo.ubicacion_id)
 
 
+# Base comun para la consulta y exportacion de reportes.
 def report_equipment_queryset(request):
     queryset = Equipo.objects.select_related(
         "tipo_equipo",
@@ -279,17 +285,46 @@ def report_equipment_queryset(request):
 
 
 def apply_report_location_filters(request, queryset):
-    location_id = request.GET.get("ubicacion", "").strip()
-    physical_location_id = request.GET.get("ubicacion_fisica", "").strip()
+    location_filter = request.GET.get("ubicacion", "").strip()
+    physical_location_name = request.GET.get("ubicacion_fisica", "").strip()
 
     if not has_full_inventory_access(request):
         responsable = current_responsable(request)
-        location_id = str(responsable.ubicacion_id) if responsable and responsable.ubicacion_id else ""
+        location_filter = str(responsable.ubicacion_id) if responsable and responsable.ubicacion_id else ""
 
-    if location_id:
-        queryset = queryset.filter(ubicacion_id=location_id)
-    if physical_location_id:
-        queryset = queryset.filter(ubicacion_fisica_id=physical_location_id)
+    if location_filter.startswith("type:"):
+        location_type = location_filter.removeprefix("type:")
+        if location_type in {Ubicacion.Tipo.FRENTE, Ubicacion.Tipo.MESA}:
+            queryset = queryset.filter(ubicacion__tipo=location_type)
+    elif location_filter:
+        queryset = queryset.filter(ubicacion_id=location_filter)
+    if physical_location_name:
+        queryset = queryset.filter(ubicacion_fisica__nombre__iexact=physical_location_name)
+    return queryset
+
+
+def apply_report_detail_filters(request, queryset):
+    equipment_type = request.GET.get("tipo_equipo", "").strip()
+    brand = request.GET.get("marca", "").strip()
+    status_label = request.GET.get("estado", "").strip()
+    assignment = request.GET.get("asignacion", "").strip()
+
+    if equipment_type:
+        queryset = queryset.filter(tipo__iexact=equipment_type)
+    if brand == "Sin marca":
+        queryset = queryset.filter(marca="")
+    elif brand:
+        queryset = queryset.filter(marca__iexact=brand)
+
+    state_map = {label.lower(): value for value, label in Equipo.Estado.choices}
+    if status_label:
+        status = state_map.get(status_label.lower())
+        queryset = queryset.filter(estado=status) if status else queryset.none()
+
+    if assignment == "assigned":
+        queryset = queryset.exclude(asignado_a="")
+    elif assignment == "unassigned":
+        queryset = queryset.filter(asignado_a="")
     return queryset
 
 
@@ -321,6 +356,7 @@ def report_workbook_response(workbook, report_name):
     )
 
 
+# Lectura y validacion de valores recibidos desde archivos y formularios.
 def parse_date_field(value):
     value = (value or "").strip()
     if not value:
@@ -378,6 +414,7 @@ def import_rows_from_file(uploaded_file):
     raise ValueError("Formato no soportado.")
 
 
+# Catalogos, listas desplegables y archivos de apoyo para Excel.
 def equipment_catalog_data(request):
     responsable = current_responsable(request)
     scoped_location = None if has_full_inventory_access(request) else responsable.ubicacion if responsable else None
@@ -493,6 +530,7 @@ def rejected_rows_workbook(headers, rejected_rows, catalog_data):
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+# Descarga de plantilla y procesamiento de cargas masivas.
 @login_required
 def plantilla_equipos_excel(request):
     available_locations, catalog_data = equipment_catalog_data(request)
@@ -551,7 +589,9 @@ def plantilla_equipos_excel(request):
 
 @login_required
 @require_POST
+@transaction.atomic
 def importar_equipos(request):
+    preview = request.POST.get("preview", "").strip().lower() in {"true", "1", "si"}
     uploaded_file = request.FILES.get("archivo")
     if not uploaded_file:
         return JsonResponse({"error": "Selecciona un archivo Excel o CSV."}, status=400)
@@ -587,6 +627,9 @@ def importar_equipos(request):
     _, catalog_data = equipment_catalog_data(request)
     imported = []
     rejected = []
+    preview_valid = []
+    preview_errors = []
+    type_summary = {}
     seen_serials = set()
 
     for row_number, row in rows:
@@ -688,9 +731,49 @@ def importar_equipos(request):
                     asignado_a=assigned_to,
                 )
                 imported.append(equipment_payload(equipment))
+                preview_valid.append(
+                    {
+                        "row": row_number,
+                        "type": equipment_type.nombre,
+                        "serial": serial,
+                        "location": location.nombre,
+                        "status": state_label,
+                    }
+                )
+                type_summary[equipment_type.nombre] = type_summary.get(equipment_type.nombre, 0) + 1
                 seen_serials.add(serial_key)
         except (PermissionError, ValueError, IntegrityError) as error:
-            rejected.append((row, rejection_reason(error)))
+            reason = rejection_reason(error)
+            rejected.append((row, reason))
+            preview_errors.append(
+                {
+                    "row": row_number,
+                    "type": str(row.get("tipo_equipo") or "").strip() or "Sin tipo",
+                    "serial": str(row.get("numero_serie") or "").strip() or "Sin serie",
+                    "reason": reason,
+                }
+            )
+
+    if preview:
+        transaction.set_rollback(True)
+        return JsonResponse(
+            {
+                "preview": True,
+                "filename": uploaded_file.name,
+                "totalCount": len(rows),
+                "validCount": len(imported),
+                "rejectedCount": len(rejected),
+                "typeSummary": [
+                    {"type": equipment_type, "count": count}
+                    for equipment_type, count in sorted(
+                        type_summary.items(),
+                        key=lambda item: (-item[1], item[0].lower()),
+                    )
+                ],
+                "validRows": preview_valid,
+                "errors": preview_errors,
+            }
+        )
 
     response_data = {
         "equipment": imported,
@@ -708,6 +791,7 @@ def importar_equipos(request):
     return JsonResponse(response_data, status=201 if imported else 200)
 
 
+# Contexto inicial de la aplicacion y datos de la sesion.
 def session_user_payload(request):
     responsable = Responsable.objects.filter(user=request.user, activo=True).select_related("ubicacion").first()
     if responsable:
@@ -762,6 +846,7 @@ def home(request):
     return render(request, "inventario/index.html", context)
 
 
+# Generacion de reportes operativos en formato Excel.
 @login_required
 def descargar_reporte(request):
     report_type = request.GET.get("tipo", "inventario").strip()
@@ -769,7 +854,10 @@ def descargar_reporte(request):
     if report_type not in allowed_reports:
         return HttpResponse("Tipo de reporte no valido.", status=400)
 
-    equipment_queryset = apply_report_location_filters(request, report_equipment_queryset(request))
+    equipment_queryset = apply_report_detail_filters(
+        request,
+        apply_report_location_filters(request, report_equipment_queryset(request)),
+    )
     workbook = Workbook()
     worksheet = workbook.active
 
@@ -829,15 +917,24 @@ def descargar_reporte(request):
     worksheet.title = report_labels[report_type][0]
 
     if report_type == "garantias":
-        try:
-            warranty_days = min(max(int(request.GET.get("dias", "90")), 1), 730)
-        except ValueError:
-            warranty_days = 90
-        equipment_queryset = equipment_queryset.filter(
-            garantia_hasta__isnull=False,
-            garantia_hasta__gte=today,
-            garantia_hasta__lte=today + timedelta(days=warranty_days),
-        ).order_by("garantia_hasta", "ubicacion__nombre")
+        warranty_filter = request.GET.get("garantia", request.GET.get("dias", "90")).strip()
+        if warranty_filter == "none":
+            equipment_queryset = equipment_queryset.filter(garantia_hasta__isnull=True)
+        elif warranty_filter == "expired":
+            equipment_queryset = equipment_queryset.filter(garantia_hasta__lt=today)
+        elif warranty_filter == "all":
+            equipment_queryset = equipment_queryset.filter(garantia_hasta__isnull=False)
+        else:
+            try:
+                warranty_days = min(max(int(warranty_filter), 1), 730)
+            except ValueError:
+                warranty_days = 90
+            equipment_queryset = equipment_queryset.filter(
+                garantia_hasta__isnull=False,
+                garantia_hasta__gte=today,
+                garantia_hasta__lte=today + timedelta(days=warranty_days),
+            )
+        equipment_queryset = equipment_queryset.order_by("garantia_hasta", "ubicacion__nombre")
     elif report_type == "mantenimiento":
         equipment_queryset = equipment_queryset.filter(estado=Equipo.Estado.MANTENIMIENTO)
     elif report_type == "bajas":
@@ -896,6 +993,7 @@ def descargar_reporte(request):
     return report_workbook_response(workbook, report_labels[report_type][1])
 
 
+# Validaciones compartidas por los modulos administrativos.
 def admin_required_json(request):
     if request.user.is_staff:
         return None
@@ -942,6 +1040,7 @@ def get_responsable_form_data(request, require_password=False):
     }, None
 
 
+# Consulta y navegacion mediante codigos QR.
 @login_required
 def equipo_qr(request, numero_serie):
     equipo = get_object_or_404(Equipo, numero_serie=numero_serie)
@@ -968,6 +1067,7 @@ def equipo_qr_link(request, numero_serie):
     return redirect(f"/?{urlencode({'qr': equipo.numero_serie})}")
 
 
+# Administracion de Frentes de Obra y Mesas.
 @login_required
 @require_POST
 def crear_ubicacion(request):
@@ -1062,6 +1162,7 @@ def eliminar_ubicacion(request, ubicacion_id):
     return JsonResponse({"deleted": ubicacion_id})
 
 
+# Administracion de responsables, cuentas y contrasenas.
 @login_required
 @require_POST
 def crear_responsable(request):
@@ -1170,6 +1271,7 @@ def eliminar_responsable(request, responsable_id):
     return JsonResponse({"deleted": responsable_id})
 
 
+# Alta, actualizacion de estado y eliminacion auditada de equipos.
 @login_required
 @require_POST
 def crear_equipo(request):
@@ -1391,6 +1493,7 @@ def eliminar_equipo(request, numero_serie):
     return JsonResponse({"deleted": deleted_serial})
 
 
+# Preparacion del documento de resguardo.
 def assignment_date_for_equipment(equipo):
     assignment = equipo.movimientos.filter(tipo=Movimiento.Tipo.ASIGNACION).first()
     return timezone.localtime(assignment.creado).date() if assignment else timezone.localdate(equipo.actualizado)
@@ -1522,6 +1625,7 @@ def build_safekeeping_pdf(equipo, fecha_asignacion):
     return buffer
 
 
+# Generacion, sustitucion y consulta de evidencias firmadas.
 @login_required
 @require_POST
 def generar_resguardo_equipo(request, numero_serie):
@@ -1636,6 +1740,7 @@ def descargar_resguardo_firmado(request, resguardo_id):
     )
 
 
+# Catalogo de tipos de equipo y atencion de solicitudes.
 @login_required
 @require_POST
 def crear_tipo_equipo(request):
@@ -1710,6 +1815,7 @@ def rechazar_solicitud_tipo_equipo(request, solicitud_id):
     return JsonResponse({"request": equipment_type_request_payload(solicitud)})
 
 
+# Catalogo de marcas y atencion de solicitudes.
 @login_required
 @require_POST
 def crear_marca_equipo(request):

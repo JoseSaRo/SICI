@@ -37,12 +37,25 @@ const pageTitles = {
 };
 
 const rows = document.querySelector("#inventoryRows");
+const inventoryScrollTop = document.querySelector("#inventoryScrollTop");
+const inventoryScrollTopInner = inventoryScrollTop?.firstElementChild;
+const inventoryTableWrap = document.querySelector("#inventoryTableWrap");
+const inventoryTable = document.querySelector("#inventoryTable");
 const roleSelect = document.querySelector("#roleSelect");
 const roleHint = document.querySelector("#roleHint");
+const themeToggle = document.querySelector("#themeToggle");
+const themeToggleIcon = document.querySelector("#themeToggleIcon");
+const themeToggleLabel = document.querySelector("#themeToggleLabel");
 const frontFilter = document.querySelector("#frontFilter");
+const physicalLocationFilter = document.querySelector("#physicalLocationFilter");
+const typeFilter = document.querySelector("#typeFilter");
+const brandFilter = document.querySelector("#brandFilter");
 const statusFilter = document.querySelector("#statusFilter");
+const clearInventoryFilters = document.querySelector("#clearInventoryFilters");
 const searchInput = document.querySelector("#globalSearch");
+const inventorySearchBox = document.querySelector("#inventorySearchBox");
 const drawer = document.querySelector("#detailDrawer");
+const detailBackdrop = document.querySelector("#detailBackdrop");
 const drawerTitle = document.querySelector("#drawerTitle");
 const drawerBody = document.querySelector("#drawerBody");
 const sessionUserButton = document.querySelector("#sessionUserButton");
@@ -78,13 +91,30 @@ const macWifiInput = document.querySelector("#macWifiInput");
 const invoiceInput = document.querySelector("#invoiceInput");
 const excelInput = document.querySelector("#excelInput");
 const importStatus = document.querySelector("#importStatus");
+const importPreviewDialog = document.querySelector("#importPreviewDialog");
+const importPreviewFilename = document.querySelector("#importPreviewFilename");
+const importPreviewTotal = document.querySelector("#importPreviewTotal");
+const importPreviewValid = document.querySelector("#importPreviewValid");
+const importPreviewRejected = document.querySelector("#importPreviewRejected");
+const importTypeSummary = document.querySelector("#importTypeSummary");
+const importErrorSection = document.querySelector("#importErrorSection");
+const importErrorList = document.querySelector("#importErrorList");
+const importPreviewStatus = document.querySelector("#importPreviewStatus");
+const confirmImportPreview = document.querySelector("#confirmImportPreview");
+const cancelImportPreview = document.querySelector("#cancelImportPreview");
+const closeImportPreview = document.querySelector("#closeImportPreview");
 const frontBars = document.querySelector(".front-bars");
 const recentMovements = document.querySelector("#recentMovements");
 const reportType = document.querySelector("#reportType");
 const reportLocation = document.querySelector("#reportLocation");
 const reportPhysicalLocation = document.querySelector("#reportPhysicalLocation");
+const reportEquipmentType = document.querySelector("#reportEquipmentType");
+const reportBrand = document.querySelector("#reportBrand");
+const reportStatus = document.querySelector("#reportStatus");
+const reportAssignment = document.querySelector("#reportAssignment");
 const reportWarrantyDays = document.querySelector("#reportWarrantyDays");
 const reportWarrantyDaysField = document.querySelector("#reportWarrantyDaysField");
+const clearReportFilters = document.querySelector("#clearReportFilters");
 const reportCount = document.querySelector("#reportCount");
 const reportAssigned = document.querySelector("#reportAssigned");
 const reportAvailable = document.querySelector("#reportAvailable");
@@ -116,6 +146,7 @@ const responsibleId = document.querySelector("#responsibleId");
 const responsibleName = document.querySelector("#responsibleName");
 const responsibleUsername = document.querySelector("#responsibleUsername");
 const responsiblePassword = document.querySelector("#responsiblePassword");
+const responsiblePasswordHint = document.querySelector("#responsiblePasswordHint");
 const responsibleRole = document.querySelector("#responsibleRole");
 const responsibleLocation = document.querySelector("#responsibleLocation");
 const responsibleActive = document.querySelector("#responsibleActive");
@@ -123,6 +154,15 @@ const responsibleSubmit = document.querySelector("#responsibleSubmit");
 const responsibleFormStatus = document.querySelector("#responsibleFormStatus");
 const passwordChangeBtn = document.querySelector("#passwordChangeBtn");
 const cancelResponsibleEdit = document.querySelector("#cancelResponsibleEdit");
+const siciDialog = document.querySelector("#siciDialog");
+const siciDialogTitle = document.querySelector("#siciDialogTitle");
+const siciDialogMessage = document.querySelector("#siciDialogMessage");
+const siciDialogField = document.querySelector("#siciDialogField");
+const siciDialogInputLabel = document.querySelector("#siciDialogInputLabel");
+const siciDialogInput = document.querySelector("#siciDialogInput");
+const siciDialogStatus = document.querySelector("#siciDialogStatus");
+const siciDialogCancel = document.querySelector("#siciDialogCancel");
+const siciDialogConfirm = document.querySelector("#siciDialogConfirm");
 const scannerVideo = document.querySelector("#scannerVideo");
 const scannerCanvas = document.querySelector("#scannerCanvas");
 const scannerPlaceholder = document.querySelector("#scannerPlaceholder");
@@ -133,6 +173,8 @@ let scannerStream = null;
 let scannerTimer = null;
 let scannerBusy = false;
 let qrDetector = null;
+let inventorySort = { key: "type", direction: "asc" };
+let pendingImportFile = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -141,6 +183,32 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function displayLocationName(value) {
+  return String(value ?? "").replace(
+    /^Infraestructura Ferroviaria en el Norte del Pa[ií]s,\s*L[ií]nea F[eé]rrea\b/i,
+    "... Línea Férrea"
+  );
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function applyTheme(theme, persist = false) {
+  const darkMode = theme === "dark";
+  document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+  themeToggle?.setAttribute("aria-pressed", String(darkMode));
+  themeToggle?.setAttribute("title", darkMode ? "Activar modo claro" : "Activar modo oscuro");
+  if (themeToggleIcon) themeToggleIcon.textContent = darkMode ? "☀" : "☾";
+  if (themeToggleLabel) themeToggleLabel.textContent = darkMode ? "Modo claro" : "Modo oscuro";
+  if (persist) localStorage.setItem("sici-theme", darkMode ? "dark" : "light");
 }
 
 function downloadBase64File(base64Data, filename, mimeType) {
@@ -157,6 +225,95 @@ function downloadBase64File(base64Data, filename, mimeType) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function openSiciDialog({
+  title,
+  message,
+  confirmLabel = "Aceptar",
+  cancelLabel = "Cancelar",
+  showCancel = true,
+  input = false,
+  inputLabel = "Valor",
+  inputType = "text"
+}) {
+  return new Promise((resolve) => {
+    siciDialogTitle.textContent = title;
+    siciDialogMessage.textContent = message;
+    siciDialogConfirm.textContent = confirmLabel;
+    siciDialogCancel.textContent = cancelLabel;
+    siciDialogCancel.classList.toggle("form-collapsed", !showCancel);
+    siciDialogField.classList.toggle("form-collapsed", !input);
+    siciDialogStatus.textContent = "";
+    siciDialogInputLabel.textContent = inputLabel;
+    siciDialogInput.type = inputType;
+    siciDialogInput.value = "";
+    const inputToggle = siciDialogInput.closest(".password-field").querySelector(".password-toggle");
+    inputToggle.classList.remove("is-visible");
+    inputToggle.classList.toggle("form-collapsed", inputType !== "password");
+    inputToggle.setAttribute("aria-label", "Mostrar contrasena");
+    inputToggle.setAttribute("title", "Mostrar contrasena");
+
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      siciDialog.close();
+      resolve(value);
+    };
+    const submit = (event) => {
+      event.preventDefault();
+      if (input && !siciDialogInput.value) {
+        siciDialogStatus.textContent = `${inputLabel} es obligatorio.`;
+        siciDialogInput.focus();
+        return;
+      }
+      finish(input ? siciDialogInput.value : true);
+    };
+    const cancel = (event) => {
+      event?.preventDefault();
+      finish(input ? null : false);
+    };
+    const closed = () => {
+      if (!settled) {
+        settled = true;
+        resolve(input ? null : false);
+      }
+      cleanup();
+    };
+    const cleanup = () => {
+      siciDialog.querySelector("form").removeEventListener("submit", submit);
+      siciDialogCancel.removeEventListener("click", cancel);
+      siciDialog.removeEventListener("cancel", cancel);
+      siciDialog.removeEventListener("close", closed);
+    };
+
+    siciDialog.querySelector("form").addEventListener("submit", submit);
+    siciDialogCancel.addEventListener("click", cancel);
+    siciDialog.addEventListener("cancel", cancel);
+    siciDialog.addEventListener("close", closed);
+    siciDialog.showModal();
+    (input ? siciDialogInput : siciDialogConfirm).focus();
+  });
+}
+
+function siciAlert(message, title = "Aviso") {
+  return openSiciDialog({ title, message, showCancel: false });
+}
+
+function siciConfirm(message, title = "Confirmar", confirmLabel = "Continuar") {
+  return openSiciDialog({ title, message, confirmLabel });
+}
+
+function siciPassword(message = "Escribe la nueva contrasena.") {
+  return openSiciDialog({
+    title: "Cambiar contrasena",
+    message,
+    confirmLabel: "Guardar contrasena",
+    input: true,
+    inputLabel: "Nueva contrasena",
+    inputType: "password"
+  });
 }
 
 function qrPayload(item) {
@@ -259,7 +416,7 @@ function populateRoleSelector() {
   const validValues = locations.map(roleValueForLocation);
   roleSelect.innerHTML = [
     `<option value="admin">Todas las ubicaciones</option>`,
-    ...locations.map((location) => `<option value="${roleValueForLocation(location)}">${escapeHtml(location.name)}</option>`)
+    ...locations.map((location) => `<option value="${roleValueForLocation(location)}">${escapeHtml(displayLocationName(location.name))}</option>`)
   ].join("");
   roleSelect.value = validValues.includes(selectedValue) ? selectedValue : "admin";
 }
@@ -272,7 +429,7 @@ function optionList(selectedValue = "") {
 
 function locationOptionListById(selectedId = "") {
   return locations
-    .map((location) => `<option value="${location.id}" ${String(selectedId) === String(location.id) ? "selected" : ""}>${escapeHtml(location.name)}</option>`)
+    .map((location) => `<option value="${location.id}" ${String(selectedId) === String(location.id) ? "selected" : ""}>${escapeHtml(displayLocationName(location.name))}</option>`)
     .join("");
 }
 
@@ -369,30 +526,113 @@ function populateLocationControls() {
   const names = locationNames();
   frontFilter.innerHTML = [
     `<option value="all">Todos los F.F.O.O. y Mesas</option>`,
-    ...names.map((name) => `<option value="${name}">${name}</option>`)
+    `<option value="type:mesa">Todas las Mesas</option>`,
+    `<option value="type:frente">Todos los Frentes de Obra</option>`,
+    ...locations.map((location) => `
+      <option value="${escapeHtml(location.name)}">${escapeHtml(displayLocationName(location.name))}</option>
+    `)
   ].join("");
 
   assignmentFront.innerHTML = names.length
-    ? locations.map((location) => `<option value="${location.id}">${escapeHtml(location.name)}</option>`).join("")
+    ? locations.map((location) => `<option value="${location.id}">${escapeHtml(displayLocationName(location.name))}</option>`).join("")
     : `<option value="">Sin ubicaciones registradas</option>`;
 
   if (responsibleLocation) {
     responsibleLocation.innerHTML = [
       `<option value="">Todas las ubicaciones</option>`,
-      ...locations.map((location) => `<option value="${location.id}">${escapeHtml(location.name)}</option>`)
+      ...locations.map((location) => `<option value="${location.id}">${escapeHtml(displayLocationName(location.name))}</option>`)
     ].join("");
   }
 
   if (reportLocation) {
     reportLocation.innerHTML = [
       `<option value="">Todos los F.F.O.O. y Mesas</option>`,
-      ...locations.map((location) => `<option value="${location.id}">${escapeHtml(location.name)}</option>`)
+      `<option value="type:frente">Todos los Frentes de Obra</option>`,
+      `<option value="type:mesa">Todas las Mesas</option>`,
+      ...locations.map((location) => `<option value="${location.id}">${escapeHtml(displayLocationName(location.name))}</option>`)
     ].join("");
   }
 
   populateRoleSelector();
   renderPhysicalLocationOptions(assignmentFront.value);
   populateReportPhysicalLocations();
+  populateReportCatalogFilters();
+  populateInventoryFilterOptions();
+}
+
+function multiFilterValues(filter) {
+  return new Set(
+    Array.from(filter?.querySelectorAll("input:checked") || []).map((input) => input.value)
+  );
+}
+
+function updateMultiFilterLabel(filter, defaultLabel) {
+  if (!filter) return;
+  const count = multiFilterValues(filter).size;
+  filter.querySelector("summary").textContent = count ? `${defaultLabel} (${count})` : defaultLabel;
+}
+
+function renderMultiFilter(filter, values, defaultLabel) {
+  if (!filter) return;
+  const selected = multiFilterValues(filter);
+  const menu = filter.querySelector(".multi-filter-menu");
+  menu.innerHTML = values.length
+    ? values.map((value) => `
+        <label>
+          <input type="checkbox" value="${escapeHtml(value)}" ${selected.has(value) ? "checked" : ""} />
+          <span>${escapeHtml(value)}</span>
+        </label>
+      `).join("")
+    : `<span class="empty-state">Sin opciones.</span>`;
+  updateMultiFilterLabel(filter, defaultLabel);
+}
+
+function populateInventoryPhysicalLocations() {
+  if (!physicalLocationFilter) return;
+  const scopedLocation = selectedLocation();
+  const selectedFront = frontFilter.value;
+  const allowedLocationIds = locations
+    .filter((location) =>
+      (!scopedLocation || location.id === scopedLocation.id) &&
+      (
+        selectedFront === "all" ||
+        selectedFront === `type:${location.type}` ||
+        location.name === selectedFront
+      )
+    )
+    .map((location) => location.id);
+  const currentValue = physicalLocationFilter.value;
+  const options = physicalLocations
+    .filter((item) => item.active && allowedLocationIds.includes(item.locationId))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  physicalLocationFilter.innerHTML = [
+    `<option value="all">Todas las ubicaciones f\u00edsicas</option>`,
+    ...options.map((item) => {
+      const location = locations.find((locationItem) => locationItem.id === item.locationId);
+      const label = (selectedFront === "all" || selectedFront.startsWith("type:")) && location
+        ? `${item.name} - ${displayLocationName(location.name)}`
+        : item.name;
+      return `<option value="${item.id}">${escapeHtml(label)}</option>`;
+    })
+  ].join("");
+  physicalLocationFilter.value = options.some((item) => String(item.id) === currentValue)
+    ? currentValue
+    : "all";
+}
+
+function populateInventoryFilterOptions() {
+  renderMultiFilter(
+    typeFilter,
+    [...new Set(equipment.map((item) => item.type))].sort((a, b) => a.localeCompare(b)),
+    "Tipos de equipo"
+  );
+  renderMultiFilter(
+    brandFilter,
+    [...new Set(equipment.map((item) => item.brand || "Sin marca"))].sort((a, b) => a.localeCompare(b)),
+    "Marcas"
+  );
+  renderMultiFilter(statusFilter, equipmentStatuses, "Estados");
+  populateInventoryPhysicalLocations();
 }
 
 function populateEquipmentTypes() {
@@ -515,11 +755,12 @@ function renderLocations() {
 
   const maxCount = Math.max(...locations.map((location) => location.equipmentCount), 1);
 
-  frontBars.innerHTML = locations
+  frontBars.innerHTML = [...locations]
+    .sort((a, b) => b.equipmentCount - a.equipmentCount || a.name.localeCompare(b.name))
     .map(
       (location) => `
         <div>
-          <span>${location.name}</span>
+          <span>${escapeHtml(displayLocationName(location.name))}</span>
           <meter min="0" max="${maxCount}" value="${location.equipmentCount}"></meter>
           <b>${location.equipmentCount}</b>
         </div>
@@ -533,7 +774,7 @@ function renderLocations() {
       const manager = location.manager || "Sin responsable";
       return `
         <article>
-          <strong>${escapeHtml(location.name)}</strong>
+          <strong>${escapeHtml(displayLocationName(location.name))}</strong>
           <span>${location.equipmentCount} equipos</span>
           <p>${managerLabel}: ${escapeHtml(manager)}</p>
           <div class="card-actions admin-only">
@@ -580,25 +821,72 @@ function renderResponsibles() {
 }
 
 function renderMetrics(items) {
+  const now = new Date();
+  const registeredThisMonth = items.filter((item) => {
+    const createdAt = new Date(item.createdAt);
+    return (
+      !Number.isNaN(createdAt.getTime()) &&
+      createdAt.getFullYear() === now.getFullYear() &&
+      createdAt.getMonth() === now.getMonth()
+    );
+  }).length;
+
   document.querySelector("#metricTotal").textContent = items.length;
+  document.querySelector("#metricRegisteredMonth").textContent =
+    `${registeredThisMonth} registrado${registeredThisMonth === 1 ? "" : "s"} este mes`;
   document.querySelector("#metricAssigned").textContent = items.filter((item) => item.status === "Asignado").length;
   document.querySelector("#metricMaintenance").textContent = items.filter((item) => item.status === "Mantenimiento").length;
   document.querySelector("#metricAvailable").textContent = items.filter((item) => item.status === "Disponible").length;
   document.querySelector("#metricDown").textContent = items.filter((item) => item.status === "Dado de baja").length;
 }
 
+function populateReportCatalogFilters() {
+  if (reportEquipmentType) {
+    const selectedType = reportEquipmentType.value;
+    reportEquipmentType.innerHTML = [
+      `<option value="">Todos los tipos</option>`,
+      ...equipmentTypes.map((item) => `<option value="${escapeHtml(item.nombre)}">${escapeHtml(item.nombre)}</option>`)
+    ].join("");
+    if (equipmentTypes.some((item) => item.nombre === selectedType)) reportEquipmentType.value = selectedType;
+  }
+  if (reportBrand) {
+    const selectedBrand = reportBrand.value;
+    reportBrand.innerHTML = [
+      `<option value="">Todas las marcas</option>`,
+      `<option value="Sin marca">Sin marca</option>`,
+      ...equipmentBrands.map((item) => `<option value="${escapeHtml(item.nombre)}">${escapeHtml(item.nombre)}</option>`)
+    ].join("");
+    if (selectedBrand === "Sin marca" || equipmentBrands.some((item) => item.nombre === selectedBrand)) {
+      reportBrand.value = selectedBrand;
+    }
+  }
+}
+
+function reportLocationMatches(locationId, selectedValue = reportLocation?.value || "") {
+  if (!selectedValue) return true;
+  const location = locations.find((item) => item.id === Number(locationId));
+  if (selectedValue.startsWith("type:")) {
+    return location?.type === selectedValue.replace("type:", "");
+  }
+  return Number(selectedValue) === Number(locationId);
+}
+
 function populateReportPhysicalLocations() {
   if (!reportPhysicalLocation) return;
-  const locationId = Number(reportLocation?.value || 0);
-  const options = physicalLocations.filter(
-    (item) => item.active && (!locationId || item.locationId === locationId)
-  );
+  const uniqueNames = new Map();
+  physicalLocations
+    .filter((item) => item.active && reportLocationMatches(item.locationId))
+    .forEach((item) => {
+      const key = normalizeSearchText(item.name);
+      if (!uniqueNames.has(key)) uniqueNames.set(key, item.name);
+    });
+  const options = Array.from(uniqueNames.values()).sort((a, b) => a.localeCompare(b));
   const currentValue = reportPhysicalLocation.value;
   reportPhysicalLocation.innerHTML = [
     `<option value="">Todas las ubicaciones fisicas</option>`,
-    ...options.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`)
+    ...options.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
   ].join("");
-  if (options.some((item) => String(item.id) === currentValue)) {
+  if (options.includes(currentValue)) {
     reportPhysicalLocation.value = currentValue;
   }
 }
@@ -611,23 +899,37 @@ function dateFromDisplay(value) {
 
 function reportEquipmentItems() {
   const scopedLocation = selectedLocation();
-  const locationId = Number(reportLocation?.value || 0);
-  const physicalLocationId = Number(reportPhysicalLocation?.value || 0);
+  const physicalLocationName = reportPhysicalLocation?.value || "";
+  const equipmentType = reportEquipmentType?.value || "";
+  const brand = reportBrand?.value || "";
+  const status = reportStatus?.value || "";
+  const assignment = reportAssignment?.value || "";
   const type = reportType?.value || "inventario";
+  const warrantyOption = reportWarrantyDays?.value || "90";
   const warrantyLimit = new Date();
   warrantyLimit.setHours(23, 59, 59, 999);
-  warrantyLimit.setDate(warrantyLimit.getDate() + Number(reportWarrantyDays?.value || 90));
+  if (/^\d+$/.test(warrantyOption)) {
+    warrantyLimit.setDate(warrantyLimit.getDate() + Number(warrantyOption));
+  }
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   return equipment.filter((item) => {
     if (scopedLocation && item.locationId !== scopedLocation.id) return false;
-    if (locationId && item.locationId !== locationId) return false;
-    if (physicalLocationId && item.physicalLocationId !== physicalLocationId) return false;
+    if (!reportLocationMatches(item.locationId)) return false;
+    if (physicalLocationName && normalizeSearchText(item.physicalLocation) !== normalizeSearchText(physicalLocationName)) return false;
+    if (equipmentType && item.type !== equipmentType) return false;
+    if (brand && (item.brand || "Sin marca") !== brand) return false;
+    if (status && item.status !== status) return false;
+    if (assignment === "assigned" && (!item.user || item.user === "Sin asignar")) return false;
+    if (assignment === "unassigned" && item.user && item.user !== "Sin asignar") return false;
     if (type === "mantenimiento" && item.status !== "Mantenimiento") return false;
     if (type === "bajas" && item.status !== "Dado de baja") return false;
     if (type === "garantias") {
       const warrantyDate = dateFromDisplay(item.warranty);
+      if (warrantyOption === "none") return !warrantyDate;
+      if (warrantyOption === "expired") return warrantyDate && warrantyDate < today;
+      if (warrantyOption === "all") return Boolean(warrantyDate);
       return warrantyDate && warrantyDate >= today && warrantyDate <= warrantyLimit;
     }
     return true;
@@ -670,7 +972,7 @@ function renderReports() {
               <tr>
                 <td data-label="Equipo">${escapeHtml(item.equipmentName)}</td>
                 <td data-label="Serie">${escapeHtml(item.serial)}</td>
-                <td data-label="F.F.O.O. o Mesa">${escapeHtml(item.location || item.front)}</td>
+                <td data-label="F.F.O.O. o Mesa">${escapeHtml(displayLocationName(item.location || item.front))}</td>
                 <td data-label="Ubicacion fisica">${escapeHtml(item.physicalLocation || "Sin registro")}</td>
                 <td data-label="Estado">${escapeHtml(item.status)}</td>
                 <td data-label="Realizado por">${escapeHtml(item.performedBy)}</td>
@@ -681,7 +983,7 @@ function renderReports() {
               <tr>
                 <td data-label="Equipo">${escapeHtml(item.name)}</td>
                 <td data-label="Serie">${escapeHtml(item.serial)}</td>
-                <td data-label="F.F.O.O. o Mesa">${escapeHtml(item.front)}</td>
+                <td data-label="F.F.O.O. o Mesa">${escapeHtml(displayLocationName(item.front))}</td>
                 <td data-label="Ubicacion fisica">${escapeHtml(item.physicalLocation || "Sin registro")}</td>
                 <td data-label="Estado"><span class="status ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
                 <td data-label="Asignado a">${escapeHtml(item.user)}</td>
@@ -749,16 +1051,97 @@ function renderRecentMovements() {
 function visibleEquipment() {
   const scopedLocation = selectedLocation();
   const frontValue = frontFilter.value;
-  const statusValue = statusFilter.value;
-  const query = searchInput.value.trim().toLowerCase();
+  const physicalLocationValue = physicalLocationFilter.value;
+  const selectedTypes = multiFilterValues(typeFilter);
+  const selectedBrands = multiFilterValues(brandFilter);
+  const selectedStatuses = multiFilterValues(statusFilter);
+  const queryTerms = normalizeSearchText(searchInput.value).split(/\s+/).filter(Boolean);
 
-  return equipment.filter((item) => {
+  const filtered = equipment.filter((item) => {
+    const itemLocation = locations.find((location) => location.id === item.locationId);
     const roleMatch = !scopedLocation || item.front === scopedLocation.name;
-    const frontMatch = frontValue === "all" || item.front === frontValue;
-    const statusMatch = statusValue === "all" || item.status === statusValue;
-    const text = `${item.type} ${item.name} ${item.serial} ${item.user} ${item.front}`.toLowerCase();
-    const searchMatch = query === "" || text.includes(query);
-    return roleMatch && frontMatch && statusMatch && searchMatch;
+    const frontMatch =
+      frontValue === "all" ||
+      frontValue === `type:${itemLocation?.type}` ||
+      item.front === frontValue;
+    const physicalMatch =
+      physicalLocationValue === "all" || item.physicalLocationId === Number(physicalLocationValue);
+    const typeMatch = !selectedTypes.size || selectedTypes.has(item.type);
+    const brandMatch = !selectedBrands.size || selectedBrands.has(item.brand || "Sin marca");
+    const statusMatch = !selectedStatuses.size || selectedStatuses.has(item.status);
+    const locationType = itemLocation?.type === "mesa"
+      ? "Mesa"
+      : itemLocation?.type === "frente"
+        ? "Frente de Obra F.F.O.O."
+        : "";
+    const text = normalizeSearchText(
+      `${item.type} ${item.brand || ""} ${item.name} ${item.serial} ${item.user} ` +
+      `${item.front} ${displayLocationName(item.front)} ${locationType} ` +
+      `${item.physicalLocation || ""} ${item.status} ${item.warranty || ""}`
+    );
+    const searchMatch = queryTerms.every((term) => text.includes(term));
+    return (
+      roleMatch &&
+      frontMatch &&
+      physicalMatch &&
+      typeMatch &&
+      brandMatch &&
+      statusMatch &&
+      searchMatch
+    );
+  });
+
+  const direction = inventorySort.direction === "asc" ? 1 : -1;
+  return filtered.sort((a, b) => {
+    let left = a[inventorySort.key] ?? "";
+    let right = b[inventorySort.key] ?? "";
+    if (inventorySort.key === "warranty") {
+      const leftDate = dateFromDisplay(left)?.getTime();
+      const rightDate = dateFromDisplay(right)?.getTime();
+      if (leftDate === undefined && rightDate === undefined) return 0;
+      if (leftDate === undefined) return 1;
+      if (rightDate === undefined) return -1;
+      left = leftDate;
+      right = rightDate;
+      return (left - right) * direction;
+    }
+    return String(left).localeCompare(String(right), "es", { numeric: true, sensitivity: "base" }) * direction;
+  });
+}
+
+function renderInventorySortState() {
+  document.querySelectorAll(".sort-button").forEach((button) => {
+    const active = button.dataset.sort === inventorySort.key;
+    const header = button.closest("th");
+    const icon = button.querySelector("span");
+    header.setAttribute(
+      "aria-sort",
+      active ? (inventorySort.direction === "asc" ? "ascending" : "descending") : "none"
+    );
+    icon.textContent = active ? (inventorySort.direction === "asc" ? "↑" : "↓") : "↕";
+    button.classList.toggle("active", active);
+  });
+}
+
+function syncInventoryScrollWidth() {
+  if (!inventoryScrollTopInner || !inventoryTable) return;
+  inventoryScrollTopInner.style.width = `${inventoryTable.scrollWidth}px`;
+  inventoryScrollTop.classList.toggle(
+    "has-overflow",
+    inventoryTable.scrollWidth > inventoryTableWrap.clientWidth
+  );
+}
+
+function fitInventoryStatusLabels() {
+  rows.querySelectorAll(".inventory-status").forEach((label) => {
+    label.textContent = label.dataset.full;
+    label.title = "";
+  });
+
+  rows.querySelectorAll(".inventory-status").forEach((label) => {
+    if (label.scrollWidth <= label.clientWidth) return;
+    label.textContent = label.dataset.short;
+    label.title = label.dataset.full;
   });
 }
 
@@ -773,20 +1156,32 @@ function renderInventory() {
             <div class="equipment-cell">
               <span class="asset-thumb">${item.type.slice(0, 2).toUpperCase()}</span>
               <div>
-                <strong>${item.name}</strong><br />
-                <span>${item.type}</span>
+                <strong>${item.type}</strong><br />
+                <span>${item.name}</span>
               </div>
             </div>
           </td>
           <td data-label="Serie">${item.serial}</td>
           <td data-label="Asignado a">${item.user}</td>
-          <td data-label="F.F.O.O. o Mesa">${item.front}</td>
-          <td data-label="Estado"><span class="status ${item.status}">${item.status}</span></td>
+          <td data-label="F.F.O.O. o Mesa">${escapeHtml(displayLocationName(item.front))}</td>
+          <td data-label="Estado">
+            <button
+              type="button"
+              class="status inventory-status ${item.status}"
+              data-status-detail="${index}"
+              data-full="${escapeHtml(item.status)}"
+              data-short="${escapeHtml({
+                Asignado: "Asig.",
+                Disponible: "Disp.",
+                Mantenimiento: "Mantto.",
+                "Dado de baja": "Baja"
+              }[item.status] || item.status)}"
+              title="Abrir estado del equipo"
+            >${escapeHtml(item.status)}</button>
+          </td>
           <td data-label="Garantia">${item.warranty}</td>
           <td data-label="QR"><button class="qr-chip" data-qr="${index}">QR</button></td>
           <td data-label="Acciones">
-            <button class="text-btn" data-detail="${index}">Ver</button>
-            <button class="text-btn" data-status="${index}">Estado</button>
             ${deleteAllowed ? `<button class="text-btn danger" data-equipment-delete="${index}">Eliminar</button>` : ""}
           </td>
         </tr>
@@ -805,9 +1200,21 @@ function renderInventory() {
   renderMetrics(items);
   renderRecentMovements();
   renderReports();
+  renderInventorySortState();
+  requestAnimationFrame(() => {
+    fitInventoryStatusLabels();
+    syncInventoryScrollWidth();
+  });
 }
 
-function openDetail(item) {
+function closeDetail() {
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  detailBackdrop.classList.remove("open");
+  detailBackdrop.setAttribute("aria-hidden", "true");
+}
+
+function openDetail(item, section = "top") {
   const historyItems = item.history?.length
     ? item.history.map((movement) => `
         <div>
@@ -832,8 +1239,8 @@ function openDetail(item) {
       <div><span>Tipo</span><strong>${item.type}</strong></div>
       <div><span>Numero de serie</span><strong>${item.serial}</strong></div>
       <div><span>Asignado a</span><strong>${item.user}</strong></div>
-      <div><span>F.F.O.O. o Mesa</span><strong>${item.front}</strong></div>
-      <div><span>Ubicacion fisica</span><strong>${item.physicalLocation || "Santa Lucía"}</strong></div>
+      <div><span>F.F.O.O. o Mesa</span><strong>${escapeHtml(displayLocationName(item.front))}</strong></div>
+      <div><span>Ubicaci\u00f3n f\u00edsica</span><strong>${escapeHtml(item.physicalLocation || "Santa Luc\u00eda")}</strong></div>
       <div><span>Estado</span><strong>${item.status}</strong></div>
       <div><span>Procesador</span><strong>${item.cpu}</strong></div>
       <div><span>RAM</span><strong>${item.ram}</strong></div>
@@ -853,6 +1260,17 @@ function openDetail(item) {
   `;
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
+  detailBackdrop.classList.add("open");
+  detailBackdrop.setAttribute("aria-hidden", "false");
+  requestAnimationFrame(() => {
+    if (section === "status") {
+      drawerBody.querySelector("[data-equipment-status-form]")?.scrollIntoView({
+        block: "start"
+      });
+      return;
+    }
+    drawer.scrollTop = 0;
+  });
 }
 
 function safekeepingBlock(item) {
@@ -912,8 +1330,8 @@ function equipmentStatusBlock(item) {
           ${locationOptionListById(lockedLocationId)}
         </select>
       </label>
-      <label>Ubicacion fisica
-        <input name="ubicacion_fisica" type="text" value="${escapeHtml(item.physicalLocation || "Santa Lucía")}" list="drawerPhysicalLocationOptions" required />
+      <label>Ubicaci\u00f3n f\u00edsica
+        <input name="ubicacion_fisica" type="text" value="${escapeHtml(item.physicalLocation || "Santa Luc\u00eda")}" list="drawerPhysicalLocationOptions" required />
         <datalist id="drawerPhysicalLocationOptions">
           ${physicalOptions.map((location) => `<option value="${escapeHtml(location.name)}"></option>`).join("")}
         </datalist>
@@ -996,7 +1414,11 @@ async function saveEquipmentStatus(serial) {
 
 async function deleteEquipment(item) {
   if (!canDeleteEquipment()) return;
-  if (!window.confirm(`Eliminar definitivamente el equipo ${item.serial}? Esta accion no es una baja.`)) return;
+  if (!await siciConfirm(
+    `Se eliminara definitivamente el equipo ${item.serial}. Esta accion no es una baja y no se puede deshacer.`,
+    "Eliminar equipo",
+    "Eliminar"
+  )) return;
 
   try {
     const response = await fetch(`/equipos/${encodeURIComponent(item.serial)}/eliminar/`, {
@@ -1005,18 +1427,18 @@ async function deleteEquipment(item) {
     });
     const data = await response.json();
     if (!response.ok) {
-      window.alert(data.error || "No se pudo eliminar el equipo.");
+      await siciAlert(data.error || "No se pudo eliminar el equipo.", "No se pudo eliminar");
       return;
     }
 
     equipment = equipment.filter((equipmentItem) => equipmentItem.serial !== item.serial);
     syncLocationEquipmentCounts();
+    populateInventoryFilterOptions();
     renderLocations();
     renderInventory();
-    drawer.classList.remove("open");
-    drawer.setAttribute("aria-hidden", "true");
+    closeDetail();
   } catch (error) {
-    window.alert("Error de conexion al eliminar el equipo.");
+    await siciAlert("Error de conexion al eliminar el equipo.", "Error de conexion");
   }
 }
 
@@ -1046,8 +1468,10 @@ async function generateSafekeepingPdf(serial) {
     let response = await requestSafekeepingPdf(serial, false);
     if (response.status === 409) {
       const data = await response.json();
-      const confirmed = window.confirm(
-        `${data.error} Si generas otro, el pendiente anterior sera reemplazado. Deseas continuar?`
+      const confirmed = await siciConfirm(
+        `${data.error} Si generas otro, el pendiente anterior sera reemplazado.`,
+        "Reemplazar resguardo",
+        "Generar otro"
       );
       if (!confirmed) {
         status.textContent = "Se conservo el resguardo pendiente.";
@@ -1188,7 +1612,7 @@ function renderScannedItem(item, rawValue) {
         <strong>${item.name}</strong>
         <span>${item.serial}</span>
       </div>
-      <p>${item.front}</p>
+      <p>${escapeHtml(displayLocationName(item.front))}</p>
       <p><span class="status ${item.status}">${item.status}</span></p>
       <button class="primary-btn" id="scanOpenDetail">Ver ficha</button>
     </div>
@@ -1455,10 +1879,11 @@ function switchView(viewId) {
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("active", view.id === viewId);
   });
-  document.querySelectorAll(".nav-item").forEach((item) => {
+  document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     item.classList.toggle("active", item.dataset.view === viewId);
   });
   document.querySelector("#pageTitle").textContent = pageTitles[viewId];
+  inventorySearchBox.classList.toggle("form-collapsed", viewId !== "inventory");
 }
 
 function applyRole() {
@@ -1487,6 +1912,7 @@ function applyRole() {
 
   frontFilter.disabled = Boolean(scopedLocation);
   assignmentFront.disabled = Boolean(scopedLocation);
+  populateInventoryPhysicalLocations();
   if (reportLocation) {
     reportLocation.disabled = Boolean(scopedLocation);
     if (scopedLocation) {
@@ -1496,7 +1922,7 @@ function applyRole() {
   }
   renderPhysicalLocationOptions(assignmentFront.value);
 
-  document.querySelectorAll(".nav-item").forEach((item) => {
+  document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     item.classList.toggle("hidden-by-role", !allowedViews.includes(item.dataset.view));
   });
 
@@ -1520,7 +1946,7 @@ function applyRole() {
   renderInventory();
 }
 
-document.querySelectorAll(".nav-item").forEach((button) => {
+document.querySelectorAll(".nav-item[data-view]").forEach((button) => {
   button.addEventListener("click", () => switchView(button.dataset.view));
 });
 
@@ -1528,7 +1954,74 @@ document.querySelectorAll("[data-view-target]").forEach((button) => {
   button.addEventListener("click", () => switchView(button.dataset.viewTarget));
 });
 
-[reportType, reportPhysicalLocation, reportWarrantyDays].forEach((control) => {
+document.querySelectorAll(".sort-button").forEach((button) => {
+  button.addEventListener("click", () => {
+    const key = button.dataset.sort;
+    inventorySort = {
+      key,
+      direction: inventorySort.key === key && inventorySort.direction === "asc" ? "desc" : "asc"
+    };
+    renderInventory();
+  });
+});
+
+[typeFilter, brandFilter, statusFilter].forEach((filter) => {
+  filter?.addEventListener("change", () => {
+    const labels = {
+      typeFilter: "Tipos de equipo",
+      brandFilter: "Marcas",
+      statusFilter: "Estados"
+    };
+    updateMultiFilterLabel(filter, labels[filter.id]);
+    renderInventory();
+  });
+});
+
+frontFilter.addEventListener("change", () => {
+  populateInventoryPhysicalLocations();
+  renderInventory();
+});
+
+physicalLocationFilter?.addEventListener("change", renderInventory);
+
+clearInventoryFilters?.addEventListener("click", () => {
+  if (!selectedLocation()) frontFilter.value = "all";
+  physicalLocationFilter.value = "all";
+  [typeFilter, brandFilter, statusFilter].forEach((filter) => {
+    filter.querySelectorAll("input:checked").forEach((input) => {
+      input.checked = false;
+    });
+  });
+  updateMultiFilterLabel(typeFilter, "Tipos de equipo");
+  updateMultiFilterLabel(brandFilter, "Marcas");
+  updateMultiFilterLabel(statusFilter, "Estados");
+  searchInput.value = "";
+  populateInventoryPhysicalLocations();
+  renderInventory();
+});
+
+inventoryScrollTop?.addEventListener("scroll", () => {
+  if (inventoryTableWrap.scrollLeft !== inventoryScrollTop.scrollLeft) {
+    inventoryTableWrap.scrollLeft = inventoryScrollTop.scrollLeft;
+  }
+});
+
+inventoryTableWrap?.addEventListener("scroll", () => {
+  if (inventoryScrollTop.scrollLeft !== inventoryTableWrap.scrollLeft) {
+    inventoryScrollTop.scrollLeft = inventoryTableWrap.scrollLeft;
+  }
+});
+
+window.addEventListener("resize", () => {
+  fitInventoryStatusLabels();
+  syncInventoryScrollWidth();
+});
+
+themeToggle?.addEventListener("click", () => {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true);
+});
+
+[reportType, reportPhysicalLocation, reportEquipmentType, reportBrand, reportStatus, reportAssignment, reportWarrantyDays].forEach((control) => {
   control?.addEventListener("change", renderReports);
 });
 
@@ -1537,11 +2030,29 @@ reportLocation?.addEventListener("change", () => {
   renderReports();
 });
 
+clearReportFilters?.addEventListener("click", () => {
+  const scopedLocation = selectedLocation();
+  reportType.value = "inventario";
+  reportLocation.value = scopedLocation ? String(scopedLocation.id) : "";
+  reportEquipmentType.value = "";
+  reportBrand.value = "";
+  reportStatus.value = "";
+  reportAssignment.value = "";
+  reportWarrantyDays.value = "90";
+  populateReportPhysicalLocations();
+  reportPhysicalLocation.value = "";
+  renderReports();
+});
+
 downloadReport?.addEventListener("click", () => {
   const params = new URLSearchParams({ tipo: reportType.value });
   if (reportLocation.value) params.set("ubicacion", reportLocation.value);
   if (reportPhysicalLocation.value) params.set("ubicacion_fisica", reportPhysicalLocation.value);
-  if (reportType.value === "garantias") params.set("dias", reportWarrantyDays.value);
+  if (reportEquipmentType.value) params.set("tipo_equipo", reportEquipmentType.value);
+  if (reportBrand.value) params.set("marca", reportBrand.value);
+  if (reportStatus.value) params.set("estado", reportStatus.value);
+  if (reportAssignment.value) params.set("asignacion", reportAssignment.value);
+  if (reportType.value === "garantias") params.set("garantia", reportWarrantyDays.value);
   window.location.href = `/reportes/descargar/?${params.toString()}`;
 });
 
@@ -1561,9 +2072,9 @@ rows.addEventListener("click", (event) => {
     return;
   }
 
-  const statusButton = event.target.closest("[data-status]");
+  const statusButton = event.target.closest("[data-status-detail]");
   if (statusButton) {
-    openDetail(visibleEquipment()[Number(statusButton.dataset.status)]);
+    openDetail(visibleEquipment()[Number(statusButton.dataset.statusDetail)], "status");
     return;
   }
 
@@ -1573,15 +2084,13 @@ rows.addEventListener("click", (event) => {
     return;
   }
 
-  const button = event.target.closest("[data-detail]");
-  if (!button) return;
-  openDetail(visibleEquipment()[Number(button.dataset.detail)]);
 });
 
 document.querySelector("#closeDrawer").addEventListener("click", () => {
-  drawer.classList.remove("open");
-  drawer.setAttribute("aria-hidden", "true");
+  closeDetail();
 });
+
+detailBackdrop.addEventListener("click", closeDetail);
 
 drawerBody.addEventListener("click", (event) => {
   const statusButton = event.target.closest("[data-equipment-status-save]");
@@ -1648,10 +2157,15 @@ document.querySelectorAll("[data-import-trigger]").forEach((button) => {
   });
 });
 
-document.querySelector("#logoutForm")?.addEventListener("submit", (event) => {
-  const confirmed = window.confirm("Seguro que deseas cerrar la sesion?");
-  if (!confirmed) {
-    event.preventDefault();
+document.querySelector("#logoutForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const confirmed = await siciConfirm(
+    "Tu sesion actual se cerrara.",
+    "Cerrar sesion",
+    "Salir"
+  );
+  if (confirmed) {
+    event.currentTarget.submit();
   }
 });
 
@@ -1712,8 +2226,15 @@ function editLocation(id) {
 function resetResponsibleForm() {
   responsibleForm.reset();
   responsibleId.value = "";
+  responsiblePassword.type = "password";
+  responsiblePassword.disabled = false;
+  const passwordToggle = responsiblePassword.closest(".password-field").querySelector(".password-toggle");
+  passwordToggle.classList.remove("form-collapsed", "is-visible");
+  passwordToggle.setAttribute("aria-label", "Mostrar contrasena");
+  passwordToggle.setAttribute("title", "Mostrar contrasena");
   responsiblePassword.placeholder = "Contrasena inicial";
   responsiblePassword.required = true;
+  responsiblePasswordHint.textContent = "Obligatoria al crear el usuario.";
   syncResponsibleLocationControl();
   responsibleSubmit.textContent = "Guardar responsable";
   passwordChangeBtn.classList.add("form-collapsed");
@@ -1740,8 +2261,16 @@ function editResponsible(id) {
   responsibleName.value = responsible.name;
   responsibleUsername.value = responsible.username;
   responsiblePassword.value = "";
-  responsiblePassword.placeholder = "Dejar vacio, usa Cambiar contrasena";
+  responsiblePassword.type = "password";
+  responsiblePassword.disabled = true;
+  const passwordToggle = responsiblePassword.closest(".password-field").querySelector(".password-toggle");
+  passwordToggle.classList.add("form-collapsed");
+  passwordToggle.classList.remove("is-visible");
+  passwordToggle.setAttribute("aria-label", "Mostrar contrasena");
+  passwordToggle.setAttribute("title", "Mostrar contrasena");
+  responsiblePassword.placeholder = "Usa el boton Cambiar contrasena";
   responsiblePassword.required = false;
+  responsiblePasswordHint.textContent = "La contrasena se modifica desde el boton Cambiar contrasena.";
   responsibleRole.value = responsible.role;
   responsibleLocation.value = responsible.locationId || "";
   syncResponsibleLocationControl();
@@ -1751,6 +2280,35 @@ function editResponsible(id) {
   cancelResponsibleEdit.classList.remove("form-collapsed");
   responsibleFormStatus.textContent = "";
   responsibleName.focus();
+}
+
+async function changeResponsiblePassword(id) {
+  const responsible = responsibles.find((item) => item.id === Number(id));
+  const password = await siciPassword(
+    `Define una nueva contrasena para ${responsible?.username || "el usuario"}.`
+  );
+  if (!password) return;
+
+  const payload = new FormData();
+  payload.append("password", password);
+  responsibleFormStatus.textContent = "Actualizando contrasena...";
+  try {
+    const response = await fetch(`/responsables/${id}/password/`, {
+      method: "POST",
+      headers: { "X-CSRFToken": csrfToken() },
+      body: payload
+    });
+    const data = await response.json();
+    responsibleFormStatus.textContent = response.ok
+      ? "Contrasena actualizada correctamente."
+      : data.error || "No se pudo cambiar la contrasena.";
+    if (response.ok) {
+      await siciAlert("La contrasena se actualizo correctamente.", "Contrasena actualizada");
+    }
+  } catch (error) {
+    responsibleFormStatus.textContent = "Error de conexion al cambiar la contrasena.";
+    await siciAlert("No fue posible conectar con el servidor.", "Error de conexion");
+  }
 }
 
 function syncResponsibleLocationControl() {
@@ -1834,6 +2392,12 @@ document.addEventListener("click", (event) => {
     sessionUserMenu?.classList.add("form-collapsed");
     sessionUserButton?.setAttribute("aria-expanded", "false");
   }
+
+  if (!event.target.closest(".multi-filter")) {
+    [typeFilter, brandFilter, statusFilter].forEach((filter) => {
+      filter?.removeAttribute("open");
+    });
+  }
 });
 
 equipmentTypeForm?.addEventListener("submit", async (event) => {
@@ -1841,7 +2405,11 @@ equipmentTypeForm?.addEventListener("submit", async (event) => {
   const typeName = newEquipmentTypeName.value.trim();
 
   if (!window.SICI_CAN_MANAGE_EQUIPMENT_TYPES) {
-    const confirmed = window.confirm(`Vas a solicitar el tipo de equipo "${typeName}". Revisa que este bien escrito antes de enviarlo. Enviar solicitud?`);
+    const confirmed = await siciConfirm(
+      `Vas a solicitar el tipo de equipo "${typeName}". Revisa que este bien escrito antes de enviarlo.`,
+      "Solicitar tipo de equipo",
+      "Enviar solicitud"
+    );
     if (!confirmed) return;
   }
 
@@ -1869,6 +2437,7 @@ equipmentTypeForm?.addEventListener("submit", async (event) => {
       equipmentTypes = [...equipmentTypes, data.type].sort((a, b) => a.nombre.localeCompare(b.nombre));
       equipmentTypeInput.value = data.type.nombre;
       populateEquipmentTypes();
+      populateReportCatalogFilters();
       equipmentTypeStatus.textContent = "Tipo agregado correctamente.";
     } else {
       equipmentTypeStatus.textContent = "Solicitud enviada al administrador.";
@@ -1891,7 +2460,11 @@ equipmentTypeRequestList?.addEventListener("click", async (event) => {
   const request = equipmentTypeRequests.find((item) => item.id === requestId);
   const action = approveButton ? "aprobar" : "rechazar";
 
-  if (!window.confirm(`${action === "aprobar" ? "Aprobar" : "Rechazar"} la solicitud "${request?.nombre || ""}"?`)) return;
+  if (!await siciConfirm(
+    `${action === "aprobar" ? "Aprobar" : "Rechazar"} la solicitud "${request?.nombre || ""}".`,
+    action === "aprobar" ? "Aprobar solicitud" : "Rechazar solicitud",
+    action === "aprobar" ? "Aprobar" : "Rechazar"
+  )) return;
 
   try {
     const response = await fetch(`/solicitudes-tipo-equipo/${requestId}/${action}/`, {
@@ -1900,7 +2473,7 @@ equipmentTypeRequestList?.addEventListener("click", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) {
-      window.alert(data.error || "No se pudo atender la solicitud.");
+      await siciAlert(data.error || "No se pudo atender la solicitud.", "Solicitud no procesada");
       return;
     }
 
@@ -1908,10 +2481,11 @@ equipmentTypeRequestList?.addEventListener("click", async (event) => {
     if (data.type) {
       equipmentTypes = [...equipmentTypes, data.type].sort((a, b) => a.nombre.localeCompare(b.nombre));
       populateEquipmentTypes();
+      populateReportCatalogFilters();
     }
     renderEquipmentTypeRequests();
   } catch (error) {
-    window.alert("Error de conexion al atender la solicitud.");
+    await siciAlert("Error de conexion al atender la solicitud.", "Error de conexion");
   }
 });
 
@@ -1920,7 +2494,11 @@ equipmentBrandForm?.addEventListener("submit", async (event) => {
   const brandName = newEquipmentBrandName.value.trim();
 
   if (!window.SICI_CAN_MANAGE_EQUIPMENT_TYPES) {
-    const confirmed = window.confirm(`Vas a solicitar la marca "${brandName}". Revisa que este bien escrita antes de enviarla. Enviar solicitud?`);
+    const confirmed = await siciConfirm(
+      `Vas a solicitar la marca "${brandName}". Revisa que este bien escrita antes de enviarla.`,
+      "Solicitar marca",
+      "Enviar solicitud"
+    );
     if (!confirmed) return;
   }
 
@@ -1948,6 +2526,7 @@ equipmentBrandForm?.addEventListener("submit", async (event) => {
       equipmentBrands = [...equipmentBrands, data.brand].sort((a, b) => a.nombre.localeCompare(b.nombre));
       equipmentBrandInput.value = data.brand.nombre;
       populateEquipmentBrands();
+      populateReportCatalogFilters();
       equipmentBrandStatus.textContent = "Marca agregada correctamente.";
     } else {
       equipmentBrandStatus.textContent = "Solicitud enviada al administrador.";
@@ -1970,7 +2549,11 @@ equipmentBrandRequestList?.addEventListener("click", async (event) => {
   const request = equipmentBrandRequests.find((item) => item.id === requestId);
   const action = approveButton ? "aprobar" : "rechazar";
 
-  if (!window.confirm(`${action === "aprobar" ? "Aprobar" : "Rechazar"} la marca "${request?.nombre || ""}"?`)) return;
+  if (!await siciConfirm(
+    `${action === "aprobar" ? "Aprobar" : "Rechazar"} la marca "${request?.nombre || ""}".`,
+    action === "aprobar" ? "Aprobar marca" : "Rechazar marca",
+    action === "aprobar" ? "Aprobar" : "Rechazar"
+  )) return;
 
   try {
     const response = await fetch(`/solicitudes-marca-equipo/${requestId}/${action}/`, {
@@ -1979,7 +2562,7 @@ equipmentBrandRequestList?.addEventListener("click", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) {
-      window.alert(data.error || "No se pudo atender la solicitud.");
+      await siciAlert(data.error || "No se pudo atender la solicitud.", "Solicitud no procesada");
       return;
     }
 
@@ -1987,10 +2570,11 @@ equipmentBrandRequestList?.addEventListener("click", async (event) => {
     if (data.brand) {
       equipmentBrands = [...equipmentBrands, data.brand].sort((a, b) => a.nombre.localeCompare(b.nombre));
       populateEquipmentBrands();
+      populateReportCatalogFilters();
     }
     renderEquipmentBrandRequests();
   } catch (error) {
-    window.alert("Error de conexion al atender la solicitud.");
+    await siciAlert("Error de conexion al atender la solicitud.", "Error de conexion");
   }
 });
 
@@ -2020,6 +2604,7 @@ equipmentForm?.addEventListener("submit", async (event) => {
 
     rememberPhysicalLocation(data.equipment);
     equipment = [...equipment, data.equipment];
+    populateInventoryFilterOptions();
     const location = locations.find((item) => item.name === data.equipment.front);
     if (location) {
       location.equipmentCount += 1;
@@ -2093,7 +2678,11 @@ locationCards?.addEventListener("click", async (event) => {
   if (!deleteButton) return;
   const id = Number(deleteButton.dataset.locationDelete);
   const location = locations.find((item) => item.id === id);
-  if (!window.confirm(`Eliminar ${location?.name || "esta ubicacion"}?`)) return;
+  if (!await siciConfirm(
+    `Se eliminara ${location?.name || "esta ubicacion"}.`,
+    "Eliminar ubicacion",
+    "Eliminar"
+  )) return;
 
   try {
     const response = await fetch(`/ubicaciones/${id}/eliminar/`, {
@@ -2102,7 +2691,7 @@ locationCards?.addEventListener("click", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) {
-      window.alert(data.error || "No se pudo eliminar la ubicacion.");
+      await siciAlert(data.error || "No se pudo eliminar la ubicacion.", "No se pudo eliminar");
       return;
     }
     locations = locations.filter((item) => item.id !== id);
@@ -2110,7 +2699,7 @@ locationCards?.addEventListener("click", async (event) => {
     renderLocations();
     applyRole();
   } catch (error) {
-    window.alert("Error de conexion al eliminar la ubicacion.");
+    await siciAlert("Error de conexion al eliminar la ubicacion.", "Error de conexion");
   }
 });
 
@@ -2121,12 +2710,14 @@ responsibleForm?.addEventListener("submit", async (event) => {
   const payload = new FormData();
   payload.append("nombre", responsibleName.value.trim());
   payload.append("usuario", responsibleUsername.value.trim());
-  payload.append("password", responsiblePassword.value);
   payload.append("rol", responsibleRole.value);
   payload.append("ubicacion", responsibleLocation.value);
   payload.append("activo", responsibleActive.value);
 
   const editingId = responsibleId.value;
+  if (!editingId) {
+    payload.append("password", responsiblePassword.value);
+  }
   const url = editingId ? `/responsables/${editingId}/editar/` : "/responsables/crear/";
 
   try {
@@ -2165,19 +2756,9 @@ responsibleCards?.addEventListener("click", async (event) => {
 
   const passwordButton = event.target.closest("[data-responsible-password]");
   if (passwordButton) {
-    editResponsible(Number(passwordButton.dataset.responsiblePassword));
-    const password = window.prompt("Nueva contrasena para el usuario:");
-    if (!password) return;
     const id = Number(passwordButton.dataset.responsiblePassword);
-    const payload = new FormData();
-    payload.append("password", password);
-    const response = await fetch(`/responsables/${id}/password/`, {
-      method: "POST",
-      headers: { "X-CSRFToken": csrfToken() },
-      body: payload
-    });
-    const data = await response.json();
-    responsibleFormStatus.textContent = response.ok ? "Contrasena actualizada correctamente." : data.error || "No se pudo cambiar la contrasena.";
+    editResponsible(id);
+    await changeResponsiblePassword(id);
     return;
   }
 
@@ -2185,7 +2766,11 @@ responsibleCards?.addEventListener("click", async (event) => {
   if (!deleteButton) return;
   const id = Number(deleteButton.dataset.responsibleDelete);
   const responsible = responsibles.find((item) => item.id === id);
-  if (!window.confirm(`Eliminar usuario ${responsible?.username || ""}?`)) return;
+  if (!await siciConfirm(
+    `Se eliminara el usuario ${responsible?.username || ""}. Esta accion no se puede deshacer.`,
+    "Eliminar responsable",
+    "Eliminar"
+  )) return;
 
   try {
     const response = await fetch(`/responsables/${id}/eliminar/`, {
@@ -2194,45 +2779,98 @@ responsibleCards?.addEventListener("click", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) {
-      window.alert(data.error || "No se pudo eliminar el responsable.");
+      await siciAlert(data.error || "No se pudo eliminar el responsable.", "No se pudo eliminar");
       return;
     }
     responsibles = responsibles.filter((item) => item.id !== id);
     renderResponsibles();
     applyRole();
   } catch (error) {
-    window.alert("Error de conexion al eliminar el responsable.");
+    await siciAlert("Error de conexion al eliminar el responsable.", "Error de conexion");
   }
 });
 
 passwordChangeBtn?.addEventListener("click", async () => {
   if (!responsibleId.value) return;
-  const password = window.prompt("Nueva contrasena para el usuario:");
-  if (!password) return;
+  await changeResponsiblePassword(responsibleId.value);
+});
+
+cancelResponsibleEdit?.addEventListener("click", cancelResponsibleEditing);
+
+function closeImportPreviewDialog() {
+  if (importPreviewDialog.open) importPreviewDialog.close();
+  pendingImportFile = null;
+  excelInput.value = "";
+}
+
+function renderImportPreview(data) {
+  importPreviewFilename.textContent = data.filename;
+  importPreviewTotal.textContent = data.totalCount;
+  importPreviewValid.textContent = data.validCount;
+  importPreviewRejected.textContent = data.rejectedCount;
+  importTypeSummary.innerHTML = data.typeSummary.length
+    ? data.typeSummary.map((item) => `
+        <span>${escapeHtml(item.type)}: ${item.count}</span>
+      `).join("")
+    : `<p class="empty-state">No hay equipos validos para cargar.</p>`;
+  importErrorSection.classList.toggle("form-collapsed", data.errors.length === 0);
+  importErrorList.innerHTML = data.errors.map((item) => `
+    <div class="import-error-item">
+      <span>Fila ${item.row}</span>
+      <div>
+        <strong>${escapeHtml(item.serial)}</strong>
+        <small>${escapeHtml(item.type)}</small>
+      </div>
+      <p>${escapeHtml(item.reason)}</p>
+    </div>
+  `).join("");
+  importPreviewStatus.textContent = data.rejectedCount
+    ? "Los registros con error no se guardaran. Al confirmar se descargara un Excel para corregirlos."
+    : "Todos los registros pasaron las validaciones.";
+  confirmImportPreview.disabled = data.validCount === 0;
+  confirmImportPreview.textContent = data.validCount
+    ? `Cargar ${data.validCount} equipo${data.validCount === 1 ? "" : "s"}`
+    : "Sin equipos validos";
+  importPreviewDialog.showModal();
+}
+
+async function requestImportPreview(file) {
+  const scopedLocation = selectedLocation();
+  const fixedLocation = scopedLocation ? scopedLocation.name : "ubicaciones del archivo";
+  importStatus.textContent = `Analizando ${file.name} para ${fixedLocation}...`;
   const payload = new FormData();
-  payload.append("password", password);
+  payload.append("archivo", file);
+  payload.append("preview", "true");
+
   try {
-    const response = await fetch(`/responsables/${responsibleId.value}/password/`, {
+    const response = await fetch("/equipos/importar/", {
       method: "POST",
       headers: { "X-CSRFToken": csrfToken() },
       body: payload
     });
     const data = await response.json();
-    responsibleFormStatus.textContent = response.ok ? "Contrasena actualizada correctamente." : data.error || "No se pudo cambiar la contrasena.";
+    if (!response.ok) {
+      importStatus.textContent = data.error || "No se pudo analizar el archivo.";
+      pendingImportFile = null;
+      excelInput.value = "";
+      return;
+    }
+    importStatus.textContent = `${data.validCount} validos y ${data.rejectedCount} con error. Revisa la vista previa.`;
+    renderImportPreview(data);
   } catch (error) {
-    responsibleFormStatus.textContent = "Error de conexion al cambiar la contrasena.";
+    importStatus.textContent = "Error de conexion al analizar el archivo.";
+    pendingImportFile = null;
+    excelInput.value = "";
   }
-});
+}
 
-cancelResponsibleEdit?.addEventListener("click", cancelResponsibleEditing);
-
-excelInput.addEventListener("change", async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const scopedLocation = selectedLocation();
-  const fixedLocation = scopedLocation ? scopedLocation.name : "ubicaciones del archivo";
-  importStatus.textContent = `Importando ${file.name} para ${fixedLocation}...`;
+async function importPendingFile() {
+  if (!pendingImportFile) return;
+  const file = pendingImportFile;
+  confirmImportPreview.disabled = true;
+  cancelImportPreview.disabled = true;
+  closeImportPreview.disabled = true;
+  importPreviewStatus.textContent = "Guardando equipos validos...";
   const payload = new FormData();
   payload.append("archivo", file);
 
@@ -2244,12 +2882,12 @@ excelInput.addEventListener("change", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) {
-      importStatus.textContent = data.error || "No se pudo importar el archivo.";
+      importPreviewStatus.textContent = data.error || "No se pudo importar el archivo.";
       return;
     }
-
     data.equipment.forEach(rememberPhysicalLocation);
     equipment = [...equipment, ...data.equipment];
+    populateInventoryFilterOptions();
     syncLocationEquipmentCounts();
     renderLocations();
     renderInventory();
@@ -2265,18 +2903,36 @@ excelInput.addEventListener("change", async (event) => {
     } else {
       importStatus.textContent = `${data.count} equipo${data.count === 1 ? "" : "s"} importado${data.count === 1 ? "" : "s"} correctamente.`;
     }
+    closeImportPreviewDialog();
   } catch (error) {
     importStatus.textContent = "Error de conexion al importar el archivo.";
   } finally {
-    excelInput.value = "";
+    confirmImportPreview.disabled = false;
+    cancelImportPreview.disabled = false;
+    closeImportPreview.disabled = false;
   }
+}
+
+excelInput.addEventListener("change", async (event) => {
+  pendingImportFile = event.target.files[0] || null;
+  if (!pendingImportFile) return;
+  await requestImportPreview(pendingImportFile);
 });
 
-[roleSelect, frontFilter, statusFilter, searchInput].forEach((control) => {
-  control.addEventListener("input", applyRole);
+confirmImportPreview?.addEventListener("click", importPendingFile);
+cancelImportPreview?.addEventListener("click", closeImportPreviewDialog);
+closeImportPreview?.addEventListener("click", closeImportPreviewDialog);
+importPreviewDialog?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  if (cancelImportPreview.disabled) return;
+  closeImportPreviewDialog();
 });
+
+roleSelect.addEventListener("input", applyRole);
+searchInput.addEventListener("input", renderInventory);
 
 populateLocationControls();
+applyTheme(document.documentElement.dataset.theme || "light");
 disableBrowserAutocomplete();
 populateEquipmentTypes();
 populateEquipmentBrands();

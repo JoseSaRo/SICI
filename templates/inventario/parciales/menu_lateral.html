@@ -1,5 +1,6 @@
 ﻿{% load static %}
 <aside class="sidebar" aria-label="Navegacion principal">
+        <!-- Identidad visual del sistema. -->
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <img src="{% static 'inventario/recursos/mesa_tic_logo.jpg' %}" alt="" />
@@ -10,6 +11,7 @@
           </div>
         </div>
 
+        <!-- Accesos a las vistas y preferencia de tema. -->
         <nav class="nav-list">
           <button class="nav-item active" data-view="dashboard">
             <span class="icon">▦</span>
@@ -39,8 +41,13 @@
             <span class="icon">↧</span>
             <span>Reportes</span>
           </button>
+          <button class="nav-item theme-toggle" type="button" id="themeToggle" aria-pressed="false" title="Activar modo oscuro">
+            <span class="icon" id="themeToggleIcon" aria-hidden="true">☾</span>
+            <span id="themeToggleLabel">Modo oscuro</span>
+          </button>
         </nav>
 
+        <!-- Selector de alcance disponible para administradores. -->
         {% if request.user.is_staff %}
           <div class="role-panel">
             <img class="role-emblem" src="{% static 'inventario/recursos/rodelagt_miniatura.png' %}" alt="" />

@@ -1,12 +1,14 @@
 ﻿<header class="topbar">
+          <!-- Identidad de la vista activa. -->
           <div>
             <span class="eyebrow">Sistema de control</span>
             <h1 id="pageTitle">Panel general</h1>
           </div>
+          <!-- Busqueda de inventario, acceso rapido y sesion actual. -->
           <div class="top-actions">
-            <div class="search-box">
+            <div class="search-box form-collapsed" id="inventorySearchBox">
               <span aria-hidden="true">⌕</span>
-              <input id="globalSearch" type="search" placeholder="Buscar equipo, serie o usuario" autocomplete="off" />
+              <input id="globalSearch" type="search" placeholder="Buscar en todo el inventario" autocomplete="off" />
             </div>
             <button class="icon-btn" title="Notificaciones" aria-label="Notificaciones">○</button>
             <button class="primary-btn" data-view-target="equipment">+ Nuevo equipo</button>

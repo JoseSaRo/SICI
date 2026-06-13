@@ -1,4 +1,5 @@
 ﻿<section class="view" id="equipment">
+          <!-- Registro principal de datos tecnicos y asignacion del equipo. -->
           <div class="form-layout">
             <section class="panel">
               <div class="section-heading">
@@ -7,6 +8,7 @@
                   <h2>Caracteristicas del equipo</h2>
                 </div>
               </div>
+              <!-- Identificacion, componentes y datos de compra. -->
               <form class="equipment-form" id="equipmentForm" autocomplete="off" enctype="multipart/form-data">
                 <label>Tipo de equipo
                   <div class="type-combobox" id="equipmentTypeCombo">
@@ -72,6 +74,7 @@
                 <label>Garantia hasta<input name="garantia_hasta" type="date" /></label>
                 <label class="wide">Observaciones<textarea name="observaciones" placeholder="Accesorios, condiciones o notas del equipo"></textarea></label>
               </form>
+              <!-- Altas rapidas y solicitudes de catalogos auxiliares. -->
               <form class="inline-create-form form-collapsed" id="equipmentTypeForm" autocomplete="off">
                 <label>Nuevo tipo de equipo<input id="newEquipmentTypeName" type="text" placeholder="Ej. Laptop, Impresora, Access Point" autocomplete="off" /></label>
                 <button class="primary-btn" id="equipmentTypeSubmit" type="submit">Agregar tipo</button>
@@ -102,12 +105,13 @@
               </section>
             </section>
 
+            <!-- Alcance operativo y situacion inicial del registro. -->
             <aside class="panel assignment-panel">
               <span class="eyebrow">Asignacion</span>
               <h2>Asignacion y ubicacion</h2>
               <label>Asignado a<input id="assignmentPerson" name="asignado_a" form="equipmentForm" type="text" placeholder="Nombre de la persona" autocomplete="off" /><small id="assignmentPersonHint">Obligatorio cuando el estado es Asignado.</small></label>
               <label>F.F.O.O. o Mesa<select id="assignmentFront" name="ubicacion" form="equipmentForm" required><option>Sin ubicaciones registradas</option></select></label>
-              <label>Ubicacion fisica
+              <label>Ubicaci&#243;n f&#237;sica
                 <input id="assignmentPhysicalLocation" name="ubicacion_fisica" form="equipmentForm" type="text" value="Santa Luc&#237;a" list="physicalLocationOptions" autocomplete="off" required />
                 <datalist id="physicalLocationOptions"></datalist>
                 <small>Selecciona una existente o escribe una nueva.</small>

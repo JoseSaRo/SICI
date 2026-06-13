@@ -1,4 +1,5 @@
 ﻿<section class="view" id="users">
+          <!-- Gestion de cuentas, roles y alcance de los responsables. -->
           <div class="section-heading">
             <div>
               <span class="eyebrow">Permisos</span>
@@ -10,6 +11,7 @@
               Agregar usuario
             </label>
           </div>
+          <!-- Formulario administrativo y referencia de permisos. -->
           <div class="admin-form-grid admin-only form-collapsed" id="responsibleFormPanel">
             <section class="panel admin-form-panel">
               <div>
@@ -20,7 +22,15 @@
                 <input id="responsibleId" type="hidden" />
                 <label>Nombre<input id="responsibleName" name="nombre" type="text" placeholder="Nombre del responsable" autocomplete="off" required /></label>
                 <label>Usuario<input id="responsibleUsername" name="usuario" type="text" placeholder="usuario.sici" autocomplete="off" required /></label>
-                <label>Contrasena<input id="responsiblePassword" name="password" type="password" placeholder="Contrasena inicial" autocomplete="new-password" /></label>
+                <label>Contrasena
+                  <span class="password-field">
+                    <input id="responsiblePassword" name="password" type="password" placeholder="Contrasena inicial" autocomplete="new-password" />
+                    <button class="password-toggle" type="button" aria-label="Mostrar contrasena" title="Mostrar contrasena">
+                      <span class="eye-icon" aria-hidden="true"></span>
+                    </button>
+                  </span>
+                  <small id="responsiblePasswordHint">Obligatoria al crear el usuario.</small>
+                </label>
                 <label>Rol<select id="responsibleRole" name="rol"><option value="admin">Administrador</option><option value="mesa_tic">Responsable Mesa TIC</option><option value="frente">Responsable de frente</option><option value="mesa">Responsable de mesa</option></select></label>
                 <label>Administra<select id="responsibleLocation" name="ubicacion"><option value="">Todas las ubicaciones</option></select></label>
                 <label>Estado<select id="responsibleActive" name="activo"><option value="true">Activo</option><option value="false">Inactivo</option></select></label>
@@ -43,6 +53,7 @@
               </div>
             </section>
           </div>
+          <!-- Directorio generado con los responsables registrados. -->
           <div class="user-grid" id="responsibleCards">
             <p class="empty-state">Sin responsables registrados.</p>
           </div>

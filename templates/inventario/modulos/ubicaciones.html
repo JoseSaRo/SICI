@@ -1,4 +1,5 @@
 ﻿<section class="view" id="fronts">
+          <!-- Catalogo de Frentes de Obra y Mesas de Trabajo. -->
           <div class="section-heading">
             <div>
               <span class="eyebrow">Ubicaciones</span>
@@ -10,7 +11,8 @@
               Agregar frente o mesa
             </label>
           </div>
-          <div class="admin-form-grid admin-only form-collapsed" id="locationFormPanel">
+          <!-- Edicion administrativa del catalogo. -->
+          <div class="admin-form-grid single-panel admin-only form-collapsed" id="locationFormPanel">
             <section class="panel admin-form-panel">
               <div>
                 <span class="eyebrow">Catalogo</span>
@@ -29,18 +31,8 @@
               </form>
             </section>
 
-            <section class="panel admin-form-panel">
-              <div>
-                <span class="eyebrow">Control</span>
-                <h2>Acciones de administrador</h2>
-              </div>
-              <div class="admin-actions">
-                <button class="ghost-btn" type="button">Editar catalogo</button>
-                <button class="ghost-btn" type="button">Asignar usuarios</button>
-                <button class="ghost-btn" type="button">Activar o desactivar</button>
-              </div>
-            </section>
           </div>
+          <!-- Listado dinamico de ubicaciones disponibles. -->
           <div class="front-grid" id="locationCards">
             <p class="empty-state">Sin frentes o mesas registradas.</p>
           </div>
